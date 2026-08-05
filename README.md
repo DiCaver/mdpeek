@@ -1,30 +1,44 @@
 # MDPeek
 
-A tiny, fast, read-only Markdown viewer for Windows.
+A tiny, read-only Markdown viewer built with Python and PySide6.
 
-MDPeek is for the moments when you only want to **open and read a Markdown file**—without launching an editor or a full note-taking application. Double-click a `.md` file, preview the rendered document, select what you need, and copy it in the format you want.
+Phase 1 opens and renders a UTF-8 Markdown file supplied on the command line. Start it without a file to see a short usage hint. There are intentionally no editing features.
 
-## Planned features
+## Setup
 
-- Open Markdown files directly from Windows Explorer
-- Clean, fast rendered preview
-- No editing—viewing stays simple and safe
-- Select text and copy it as:
-  - plain text
-  - original Markdown
-- Support common Markdown elements, including headings, lists, links, images, tables, code blocks, and task lists
-- Light and dark themes
-- Small, free, and open source
+MDPeek requires Python 3.10 or newer. From the repository root, create a virtual environment and install the application:
 
-## Project status
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
 
-MDPeek is currently at the planning and early development stage. The first goal is a minimal Windows application that does one job well: effortless Markdown viewing and copying.
+## Run
 
-## Philosophy
+Open a Markdown file:
 
-No workspace. No file management. No account. No distractions.
+```powershell
+mdpeek README.md
+```
 
-Just peek at Markdown.
+Or run the package directly:
+
+```powershell
+python -m mdpeek README.md
+```
+
+Running either command without a filepath opens the empty screen. Close the window to exit.
+
+## Test
+
+```powershell
+python -m unittest discover -s tests
+```
+
+## Scope
+
+MDPeek currently provides a single read-only window using Qt's built-in Markdown renderer. File associations, richer Markdown extensions, themes, and copy-format options are future work.
 
 ## License
 
