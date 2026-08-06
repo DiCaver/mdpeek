@@ -2,7 +2,9 @@
 
 A tiny, read-only Markdown viewer built with Python and PySide6.
 
-Phase 1 opens and renders a UTF-8 Markdown file supplied on the command line. Start it without a file to see a short usage hint. There are intentionally no editing features.
+MDPeek opens and renders a UTF-8 Markdown file supplied on the command line. Start it without a file to see a short usage hint. There are intentionally no editing features.
+
+Phase 2 adds a clean reading layout, responsive document margins, modern Windows font selection, and restrained styling for common Markdown elements while retaining Qt's small built-in Markdown renderer.
 
 ## Setup
 
@@ -30,6 +32,18 @@ python -m mdpeek README.md
 
 Running either command without a filepath opens the empty screen. Close the window to exit.
 
+To explore the supported Markdown and presentation styles, open the included showcase:
+
+```powershell
+python -m mdpeek examples/showcase.md
+```
+
+## Markdown support
+
+Qt correctly renders headings, emphasis, strikethrough, links, ordered and unordered lists, blockquotes, inline and fenced code, tables, horizontal rules, Unicode text, and relative local images used by the showcase.
+
+Its built-in renderer intentionally supports a practical CommonMark/GitHub-style subset rather than every Markdown extension. Task lists render as non-interactive checked and unchecked boxes. Fenced-code language labels do not provide syntax highlighting, table alignment hints may not affect presentation, and raw HTML/CSS support is limited. MDPeek does not add browser-engine behavior to fill these gaps.
+
 ## Test
 
 ```powershell
@@ -38,7 +52,7 @@ python -m unittest discover -s tests
 
 ## Scope
 
-MDPeek currently provides a single read-only window using Qt's built-in Markdown renderer. File associations, richer Markdown extensions, themes, and copy-format options are future work.
+MDPeek provides a single read-only, selectable document window using Qt's built-in Markdown renderer. External links open in the system browser and relative images resolve from the Markdown file's folder. Editing, drag-and-drop, file associations, themes, installers, and copy-as-Markdown are outside the current scope.
 
 ## License
 

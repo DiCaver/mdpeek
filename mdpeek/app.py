@@ -6,7 +6,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QMainWindow, QTextBrowser
+
+from .style import apply_document_style, document_font, document_stylesheet, window_gutter
 
 
 EMPTY_MESSAGE = """# MDPeek
@@ -30,9 +33,16 @@ class MarkdownWindow(QMainWindow):
         self.resize(900, 700)
 
         viewer = QTextBrowser()
-        viewer_font = viewer.font()
-        viewer_font.setPointSize(max(viewer_font.pointSize(), 11))
-        viewer.setFont(viewer_font)
+        viewer.setFrameShape(QTextBrowser.Shape.NoFrame)
+        viewer_palette = viewer.palette()
+        viewer_palette.setBrush(
+            QPalette.ColorRole.Base,
+            self.palette().brush(QPalette.ColorRole.Window),
+        )
+        viewer.setPalette(viewer_palette)
+        viewer.setFont(document_font())
+        viewer.document().setDefaultFont(document_font())
+        viewer.document().setDefaultStyleSheet(document_stylesheet())
         viewer.setOpenExternalLinks(True)
         viewer.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -40,6 +50,7 @@ class MarkdownWindow(QMainWindow):
             | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
         self.setCentralWidget(viewer)
+        self._update_gutter()
 
         if path is None:
             self.setWindowTitle("MDPeek")
@@ -48,6 +59,18 @@ class MarkdownWindow(QMainWindow):
             self.setWindowTitle(f"{path.name} — MDPeek")
             viewer.document().setBaseUrl(QUrl.fromLocalFile(str(path.parent.resolve()) + "/"))
             viewer.setMarkdown(markdown or "")
+
+        apply_document_style(viewer.document(), viewer.palette())
+
+    def resizeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        super().resizeEvent(event)
+        self._update_gutter()
+
+    def _update_gutter(self) -> None:
+        gutter = window_gutter(self.width())
+        viewer = self.centralWidget()
+        if isinstance(viewer, QTextBrowser):
+            viewer.setViewportMargins(gutter, gutter, gutter, gutter)
 
 
 def build_parser() -> argparse.ArgumentParser:

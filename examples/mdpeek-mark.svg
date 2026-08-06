@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="180" viewBox="0 0 560 180">
+  <rect width="560" height="180" rx="18" fill="#f6f8fa"/>
+  <rect x="42" y="28" width="150" height="124" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="3"/>
+  <path d="M70 62h94M70 84h72M70 106h94M70 128h56" stroke="#8c959f" stroke-width="8" stroke-linecap="round"/>
+  <text x="230" y="92" font-family="Segoe UI, sans-serif" font-size="38" font-weight="600" fill="#24292f">MDPeek</text>
+  <text x="232" y="124" font-family="Segoe UI, sans-serif" font-size="18" fill="#57606a">small · fast · read-only</text>
+</svg>
