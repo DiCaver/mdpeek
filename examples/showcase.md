@@ -1,6 +1,6 @@
 # MDPeek Markdown Showcase
 
-This document exercises Qt's built-in Markdown renderer and MDPeek's Phase 2 reading style. It includes **bold**, *italic*, ~~strikethrough~~, and an [external link to Qt](https://www.qt.io/).
+This document exercises Qt's built-in Markdown renderer and MDPeek's reading style. It includes **bold**, *italic*, ~~strikethrough~~, and an [external link to Qt](https://www.qt.io/).
 
 ## Heading level two
 
@@ -41,8 +41,58 @@ showcase = Path("examples/showcase.md")
 print(f"Viewing {showcase.name}")
 ```
 
+## Syntax highlighting
+
+The palette is intentionally quiet, and every code panel remains selectable.
+
+```javascript
+const greeting = "Hello from MDPeek";
+console.log(greeting);
+```
+
+```css
+.document {
+  color: #e6edf3;
+  background: #202428;
+}
+```
+
+```csharp
+public sealed class Preview
+{
+    public string Title { get; init; } = "MDPeek";
+}
+```
+
+```json
+{
+  "application": "MDPeek",
+  "readOnly": true,
+  "features": ["Markdown", "syntax highlighting"]
+}
+```
+
+```sql
+SELECT language, COUNT(*) AS examples
+FROM code_blocks
+WHERE highlighted = TRUE
+GROUP BY language;
+```
+
+Unknown languages fall back to ordinary monospace code without guessing:
+
+```made-up-language
+widget := preserve(<this & that>)
+```
+
+An unlabeled fence has the same safe fallback:
+
+```
+exact text: <tag> & "quotes"
+```
+
 | Feature | Example | Expected |
-|:--|:--:|--:|
+| :-- | :--: | --: |
 | Unicode | č, š, ž | Preserved |
 | Alignment | left / center / right | Qt-dependent |
 | Code | `inline` | Monospace |
@@ -54,5 +104,7 @@ print(f"Viewing {showcase.name}")
 The image below is loaded relative to this Markdown file:
 
 ![A simple MDPeek document illustration](mdpeek-mark.svg)
+
+![JRS_3.gif (200×200)](https://www.jamarska-zveza.si/images/JRS_3.gif)
 
 End of showcase.

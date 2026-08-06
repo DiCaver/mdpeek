@@ -11,6 +11,7 @@ from PySide6.QtGui import QPalette, QTextFormat
 from PySide6.QtWidgets import QApplication, QTextBrowser
 
 from mdpeek.app import EMPTY_MESSAGE, MarkdownWindow, build_parser, read_markdown
+from mdpeek.highlight import find_code_fences, lexer_for_language
 from mdpeek.style import (
     LARGE_WINDOW_GUTTER,
     SMALL_WINDOW_GUTTER,
@@ -19,6 +20,13 @@ from mdpeek.style import (
     reading_font_family,
     window_gutter,
 )
+
+
+def _fragments(block):  # type: ignore[no-untyped-def]
+    iterator = block.begin()
+    while not iterator.atEnd():
+        yield iterator.fragment()
+        iterator += 1
 
 
 class MDPeekTests(unittest.TestCase):
@@ -95,6 +103,50 @@ class MDPeekTests(unittest.TestCase):
         fenced = inline.next()
         self.assertTrue(fenced.blockFormat().property(QTextFormat.Property.BlockNonBreakableLines))
         self.assertNotEqual(fenced.blockFormat().background().style(), Qt.BrushStyle.NoBrush)
+
+    def test_fence_scanner_preserves_code_and_languages(self) -> None:
+        markdown = "```py\nprint('č')\n\n# comment\n```\n~~~mystery\na < b & c\n~~~"
+        fences = find_code_fences(markdown)
+        self.assertEqual(fences[0].language, "py")
+        self.assertEqual(fences[0].lines, ("print('č')", "", "# comment"))
+        self.assertEqual(fences[1].language, "mystery")
+        self.assertEqual(fences[1].lines, ("a < b & c",))
+
+    def test_supported_languages_and_aliases_have_lexers(self) -> None:
+        for language in (
+            "python", "javascript", "typescript", "css", "html", "csharp",
+            "sql", "json", "powershell", "bash", "js", "ts", "cs", "py", "ps1", "sh",
+        ):
+            with self.subTest(language=language):
+                self.assertIsNotNone(lexer_for_language(language))
+        self.assertIsNone(lexer_for_language(None))
+        self.assertIsNone(lexer_for_language("not-a-real-language"))
+
+    def test_highlighting_preserves_plain_text_and_falls_back_safely(self) -> None:
+        markdown = "```py\nvalue = 'č'\n```\n\n```mystery\nx < y & z\n```\n\n```\nplain & exact\n```"
+        window = MarkdownWindow(Path("example.md"), markdown)
+        document = window.centralWidget().document()
+        self.assertEqual(document.toPlainText(), "value = 'č'\nx < y & z\nplain & exact")
+        python_block = document.begin()
+        python_colors = {
+            fragment.charFormat().foreground().color().name()
+            for fragment in _fragments(python_block)
+        }
+        unknown_block = python_block.next()
+        plain_block = unknown_block.next()
+        self.assertGreater(len(python_colors), 1)
+        self.assertEqual(len({f.charFormat().foreground().color().name() for f in _fragments(unknown_block)}), 1)
+        self.assertEqual(len({f.charFormat().foreground().color().name() for f in _fragments(plain_block)}), 1)
+        self.assertTrue(python_block.blockFormat().property(QTextFormat.Property.BlockNonBreakableLines))
+
+    def test_fenced_lines_form_one_visual_panel(self) -> None:
+        window = MarkdownWindow(Path("example.md"), "```python\none = 1\ntwo = 2\n```")
+        first = window.centralWidget().document().begin()
+        second = first.next()
+        self.assertEqual(first.blockFormat().bottomMargin(), 0)
+        self.assertEqual(second.blockFormat().topMargin(), 0)
+        self.assertEqual(first.blockFormat().lineHeight(), 100)
+        self.assertEqual(first.blockFormat().background(), second.blockFormat().background())
 
     def test_window_gutter_is_responsive(self) -> None:
         self.assertEqual(window_gutter(900), LARGE_WINDOW_GUTTER)

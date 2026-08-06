@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QColor, QPainter, QPalette, QTextFormat
 from PySide6.QtWidgets import QApplication, QMainWindow, QTextBrowser
 
 from .style import apply_document_style, document_font, document_stylesheet, window_gutter
@@ -18,6 +18,27 @@ Open a Markdown file by passing its path on the command line:
 
     mdpeek README.md
 """
+
+
+class MarkdownViewer(QTextBrowser):
+    """Read-only browser with paint-only blockquote rules."""
+
+    def paintEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        super().paintEvent(event)
+        painter = QPainter(self.viewport())
+        dark = self.palette().color(QPalette.ColorRole.Base).lightness() < 128
+        painter.setPen(QColor("#56616c" if dark else "#b8c0c8"))
+        document_margin = self.document().documentMargin()
+        x = round(document_margin + 3 - self.horizontalScrollBar().value())
+        block = self.document().begin()
+        while block.isValid():
+            if block.blockFormat().property(QTextFormat.Property.BlockQuoteLevel):
+                rect = self.document().documentLayout().blockBoundingRect(block)
+                top = round(rect.top() - self.verticalScrollBar().value())
+                bottom = round(rect.bottom() - self.verticalScrollBar().value())
+                if bottom >= 0 and top <= self.viewport().height():
+                    painter.drawLine(x, top, x, bottom)
+            block = block.next()
 
 
 def read_markdown(path: Path) -> str:
@@ -32,7 +53,7 @@ class MarkdownWindow(QMainWindow):
         super().__init__()
         self.resize(900, 700)
 
-        viewer = QTextBrowser()
+        viewer = MarkdownViewer()
         viewer.setFrameShape(QTextBrowser.Shape.NoFrame)
         viewer_palette = viewer.palette()
         viewer_palette.setBrush(
@@ -60,7 +81,7 @@ class MarkdownWindow(QMainWindow):
             viewer.document().setBaseUrl(QUrl.fromLocalFile(str(path.parent.resolve()) + "/"))
             viewer.setMarkdown(markdown or "")
 
-        apply_document_style(viewer.document(), viewer.palette())
+        apply_document_style(viewer.document(), viewer.palette(), markdown or EMPTY_MESSAGE)
 
     def resizeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         super().resizeEvent(event)
