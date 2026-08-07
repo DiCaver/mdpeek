@@ -6,7 +6,7 @@ from pathlib import Path
 if sys.platform != "win32":
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QByteArray, Qt, QUrl
+from PySide6.QtCore import QByteArray, QMimeData, Qt, QUrl
 from PySide6.QtGui import (
     QFont,
     QPalette,
@@ -66,6 +66,8 @@ class MDPeekTests(unittest.TestCase):
         self.assertGreaterEqual(viewer.font().pointSize(), 11)
         self.assertIn("MDPeek", viewer.toPlainText())
         self.assertIn("mdpeek README.md", viewer.toPlainText())
+        self.assertIn("Ctrl+O", viewer.toPlainText())
+        self.assertIn("drag and drop", viewer.toPlainText())
         self.assertIn("MDPeek", EMPTY_MESSAGE)
 
     def test_file_window_renders_markdown(self) -> None:
@@ -97,6 +99,62 @@ class MDPeekTests(unittest.TestCase):
         expected = QUrl.fromLocalFile(str(path.parent) + "/")
         self.assertEqual(viewer.document().baseUrl(), expected)
         self.assertIn("mdpeek-mark.svg", viewer.document().toHtml())
+
+    def test_opening_second_file_updates_document_title_base_and_scroll(self) -> None:
+        first = Path("README.md")
+        second = Path("examples/showcase.md")
+        window = MarkdownWindow()
+        self.assertTrue(window.open_file(first))
+        window.viewer.verticalScrollBar().setValue(10)
+        self.assertTrue(window.open_file(second))
+        self.assertIn("MDPeek Markdown Showcase", window.viewer.toPlainText())
+        self.assertEqual(window.windowTitle(), "showcase.md — MDPeek")
+        self.assertEqual(window.current_path, second.resolve())
+        self.assertEqual(
+            window.viewer.document().baseUrl(),
+            QUrl.fromLocalFile(str(second.parent.resolve()) + "/"),
+        )
+        self.assertEqual(
+            window.viewer.document().baseUrl().resolved(QUrl("mdpeek-mark.svg")),
+            QUrl.fromLocalFile(str((second.parent / "mdpeek-mark.svg").resolve())),
+        )
+        self.assertEqual(window.viewer.verticalScrollBar().value(), 0)
+
+    def test_failed_open_preserves_current_document_and_path(self) -> None:
+        path = Path("README.md")
+        window = MarkdownWindow()
+        self.assertTrue(window.open_file(path))
+        title = window.windowTitle()
+        self.assertFalse(window.open_file(Path("missing.md"), show_error=False))
+        self.assertEqual(window.current_path, path.resolve())
+        self.assertEqual(window.windowTitle(), title)
+        self.assertIn("MDPeek", window.viewer.toPlainText())
+
+    def test_drop_validation_accepts_only_one_local_markdown_file(self) -> None:
+        markdown = Path("tests/fixtures/drop.MARKDOWN").resolve()
+        unsupported = Path("pyproject.toml").resolve()
+
+        def mime(*urls: QUrl) -> QMimeData:
+            data = QMimeData()
+            data.setUrls(list(urls))
+            return data
+
+        local = QUrl.fromLocalFile(str(markdown))
+        self.assertEqual(MarkdownWindow.dropped_markdown_path(mime(local)), markdown)
+        self.assertIsNone(MarkdownWindow.dropped_markdown_path(
+            mime(QUrl.fromLocalFile(str(Path.cwd())))
+        ))
+        self.assertIsNone(MarkdownWindow.dropped_markdown_path(
+            mime(QUrl("https://example.com/readme.md"))
+        ))
+        self.assertIsNone(MarkdownWindow.dropped_markdown_path(
+            mime(QUrl.fromLocalFile(str(unsupported)))
+        ))
+        self.assertIsNone(MarkdownWindow.dropped_markdown_path(mime(local, local)))
+
+    def test_open_action_has_standard_shortcut(self) -> None:
+        window = MarkdownWindow()
+        self.assertEqual(window.open_action.shortcut().toString(), "Ctrl+O")
 
     def test_remote_images_are_requested_asynchronously(self) -> None:
         url = QUrl("https://example.com/picture.png")

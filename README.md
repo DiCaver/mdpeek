@@ -2,7 +2,7 @@
 
 A tiny, read-only Markdown viewer built with Python and PySide6.
 
-MDPeek opens and renders a UTF-8 Markdown file supplied on the command line. Start it without a file to see a short usage hint. There are intentionally no editing features.
+MDPeek opens and renders UTF-8 Markdown files from the command line, the native Open dialog, or drag-and-drop. There are intentionally no editing features.
 
 Phase 2 adds a clean reading layout, responsive document margins, modern Windows font selection, restrained styling, and offline Pygments highlighting for fenced code while retaining Qt's small built-in Markdown renderer.
 
@@ -32,6 +32,8 @@ python -m mdpeek README.md
 
 Running either command without a filepath opens the empty screen. Close the window to exit.
 
+While MDPeek is running, press `Ctrl+O` (or choose **File > Open…**) to select a file. You can also drag one `.md` or `.markdown` file anywhere onto the window. A newly opened file replaces the current document in the same window; MDPeek remains a read-only viewer.
+
 To explore the supported Markdown and presentation styles, open the included showcase:
 
 ```powershell
@@ -52,7 +54,7 @@ python -m unittest discover -s tests
 
 ## Scope
 
-MDPeek provides a single read-only, selectable document window using Qt's built-in Markdown renderer. External links open in the system browser and relative images resolve from the Markdown file's folder. Editing, drag-and-drop, file associations, themes, installers, and copy-as-Markdown are outside the current scope.
+MDPeek provides a single read-only, selectable document window using Qt's built-in Markdown renderer. External links open in the system browser and relative images resolve from the currently open Markdown file's folder. Editing, tabs, recent files, automatic file watching, file associations, themes, installers, and copy-as-Markdown are outside the current scope.
 
 ## License
 
