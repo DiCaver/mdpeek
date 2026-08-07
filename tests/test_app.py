@@ -6,14 +6,27 @@ from pathlib import Path
 if sys.platform != "win32":
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QPalette, QTextFormat
+from PySide6.QtCore import QByteArray, Qt, QUrl
+from PySide6.QtGui import (
+    QFont,
+    QPalette,
+    QTextCharFormat,
+    QTextCursor,
+    QTextDocument,
+    QTextFormat,
+    QTextFrameFormat,
+    QTextTable,
+    QTextTableCellFormat,
+)
 from PySide6.QtWidgets import QApplication, QTextBrowser
 
 from mdpeek.app import EMPTY_MESSAGE, MarkdownWindow, build_parser, read_markdown
 from mdpeek.highlight import find_code_fences, lexer_for_language
 from mdpeek.style import (
+    CODE_PANEL,
     LARGE_WINDOW_GUTTER,
+    PANEL_KIND_PROPERTY,
+    QUOTE_PANEL,
     SMALL_WINDOW_GUTTER,
     code_font_family,
     document_stylesheet,
@@ -85,12 +98,21 @@ class MDPeekTests(unittest.TestCase):
         self.assertEqual(viewer.document().baseUrl(), expected)
         self.assertIn("mdpeek-mark.svg", viewer.document().toHtml())
 
+    def test_remote_images_are_requested_asynchronously(self) -> None:
+        url = QUrl("https://example.com/picture.png")
+        window = MarkdownWindow(Path("example.md"), f"![remote]({url.toString()})")
+        viewer = window.centralWidget()
+        result = viewer.loadResource(QTextDocument.ResourceType.ImageResource, url)
+        self.assertIsInstance(result, QByteArray)
+        self.assertIn(url, viewer._pending_images)
+
     def test_style_configuration_covers_document_elements(self) -> None:
         css = document_stylesheet()
         for selector in ("body", "p", "h1", "h6", "ul, ol", "blockquote", "a", "code", "pre", "hr", "table", "th", "td"):
             self.assertIn(f"{selector} {{", css)
         self.assertTrue(reading_font_family())
         self.assertTrue(code_font_family())
+        self.assertIn('li.checked::marker { content: "\\2611"; }', css)
 
     def test_parsed_document_receives_reading_formats(self) -> None:
         window = MarkdownWindow(Path("example.md"), "# Heading\n\n`inline`\n\n```py\ncode\n```")
@@ -102,7 +124,55 @@ class MDPeekTests(unittest.TestCase):
         self.assertNotEqual(inline.begin().fragment().charFormat().background().style(), Qt.BrushStyle.NoBrush)
         fenced = inline.next()
         self.assertTrue(fenced.blockFormat().property(QTextFormat.Property.BlockNonBreakableLines))
-        self.assertNotEqual(fenced.blockFormat().background().style(), Qt.BrushStyle.NoBrush)
+        code_frames = [
+            frame for frame in document.rootFrame().childFrames()
+            if frame.format().property(PANEL_KIND_PROPERTY) == CODE_PANEL
+        ]
+        self.assertEqual(len(code_frames), 1)
+
+    def test_inline_code_background_includes_surrounding_spaces(self) -> None:
+        window = MarkdownWindow(Path("example.md"), "Before `code` after")
+        document = window.centralWidget().document()
+        code = document.find("code")
+        start = code.selectionStart()
+        end = code.selectionEnd()
+        for position in (start - 1, end):
+            cursor = QTextCursor(document)
+            cursor.setPosition(position)
+            cursor.setPosition(position + 1, QTextCursor.MoveMode.KeepAnchor)
+            self.assertNotEqual(
+                cursor.charFormat().background().style(), Qt.BrushStyle.NoBrush
+            )
+        for position in (start - 2, end + 1):
+            cursor = QTextCursor(document)
+            cursor.setPosition(position)
+            cursor.setPosition(position + 1, QTextCursor.MoveMode.KeepAnchor)
+            self.assertEqual(
+                cursor.charFormat().background().style(), Qt.BrushStyle.NoBrush
+            )
+
+    def test_table_headers_are_bold_and_vertically_centered(self) -> None:
+        markdown = "| Feature | Example |\n| --- | --- |\n| Code | `inline` |"
+        window = MarkdownWindow(Path("example.md"), markdown)
+        document = window.centralWidget().document()
+        table = next(
+            frame for frame in document.rootFrame().childFrames()
+            if isinstance(frame, QTextTable)
+        )
+        self.assertEqual(table.format().margin(), 8)
+        for column in range(table.columns()):
+            cell = table.cellAt(0, column)
+            self.assertEqual(
+                QTextTableCellFormat(cell.format()).verticalAlignment(),
+                QTextCharFormat.VerticalAlignment.AlignMiddle,
+            )
+            block = document.find(["Feature", "Example"][column]).block()
+            self.assertGreaterEqual(
+                block.begin().fragment().charFormat().fontWeight(),
+                QFont.Weight.DemiBold,
+            )
+            self.assertEqual(block.blockFormat().topMargin(), 0)
+            self.assertEqual(block.blockFormat().bottomMargin(), 0)
 
     def test_fence_scanner_preserves_code_and_languages(self) -> None:
         markdown = "```py\nprint('č')\n\n# comment\n```\n~~~mystery\na < b & c\n~~~"
@@ -126,27 +196,46 @@ class MDPeekTests(unittest.TestCase):
         markdown = "```py\nvalue = 'č'\n```\n\n```mystery\nx < y & z\n```\n\n```\nplain & exact\n```"
         window = MarkdownWindow(Path("example.md"), markdown)
         document = window.centralWidget().document()
-        self.assertEqual(document.toPlainText(), "value = 'č'\nx < y & z\nplain & exact")
-        python_block = document.begin()
+        content_lines = [line for line in document.toPlainText().splitlines() if line]
+        self.assertEqual(content_lines, ["value = 'č'", "x < y & z", "plain & exact"])
+        python_block = document.find("value =").block()
         python_colors = {
             fragment.charFormat().foreground().color().name()
             for fragment in _fragments(python_block)
         }
-        unknown_block = python_block.next()
-        plain_block = unknown_block.next()
+        unknown_block = document.find("x < y").block()
+        plain_block = document.find("plain & exact").block()
         self.assertGreater(len(python_colors), 1)
         self.assertEqual(len({f.charFormat().foreground().color().name() for f in _fragments(unknown_block)}), 1)
         self.assertEqual(len({f.charFormat().foreground().color().name() for f in _fragments(plain_block)}), 1)
-        self.assertTrue(python_block.blockFormat().property(QTextFormat.Property.BlockNonBreakableLines))
+        self.assertTrue(any(
+            frame.format().property(PANEL_KIND_PROPERTY) == CODE_PANEL
+            for frame in document.rootFrame().childFrames()
+        ))
 
     def test_fenced_lines_form_one_visual_panel(self) -> None:
         window = MarkdownWindow(Path("example.md"), "```python\none = 1\ntwo = 2\n```")
-        first = window.centralWidget().document().begin()
-        second = first.next()
-        self.assertEqual(first.blockFormat().bottomMargin(), 0)
-        self.assertEqual(second.blockFormat().topMargin(), 0)
-        self.assertEqual(first.blockFormat().lineHeight(), 100)
-        self.assertEqual(first.blockFormat().background(), second.blockFormat().background())
+        document = window.centralWidget().document()
+        frames = document.rootFrame().childFrames()
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0].format().property(PANEL_KIND_PROPERTY), CODE_PANEL)
+        frame_format = QTextFrameFormat(frames[0].format())
+        self.assertEqual(frame_format.padding(), 12)
+        self.assertEqual(frame_format.margin(), 8)
+
+    def test_multi_paragraph_quote_forms_one_visual_panel(self) -> None:
+        markdown = "> First paragraph.\n>\n> Second paragraph."
+        window = MarkdownWindow(Path("example.md"), markdown)
+        document = window.centralWidget().document()
+        frames = document.rootFrame().childFrames()
+        quote_frames = [
+            frame for frame in frames
+            if frame.format().property(PANEL_KIND_PROPERTY) == QUOTE_PANEL
+        ]
+        self.assertEqual(len(quote_frames), 1)
+        self.assertEqual(QTextFrameFormat(quote_frames[0].format()).padding(), 10)
+        first_quote_block = document.find("First paragraph.").block()
+        self.assertEqual(first_quote_block.blockFormat().bottomMargin(), 10)
 
     def test_window_gutter_is_responsive(self) -> None:
         self.assertEqual(window_gutter(900), LARGE_WINDOW_GUTTER)

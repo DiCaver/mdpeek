@@ -65,12 +65,12 @@ def lexer_for_language(language: str | None):  # type: ignore[no-untyped-def]
 
 def _token_color(token, dark: bool) -> QColor | None:  # type: ignore[no-untyped-def]
     colors = {
-        "comment": "#87929d" if dark else "#687078",
-        "keyword": "#c9a7d8" if dark else "#76507f",
-        "string": "#aebd8a" if dark else "#586b35",
-        "number": "#d1ad80" if dark else "#825d2f",
-        "name": "#91b7ca" if dark else "#35677d",
-        "operator": "#b9c1c9" if dark else "#59636e",
+        "comment": "#6a9955" if dark else "#687078",
+        "keyword": "#569cd6" if dark else "#76507f",
+        "string": "#ce9178" if dark else "#586b35",
+        "number": "#b5cea8" if dark else "#825d2f",
+        "name": "#4ec9b0" if dark else "#35677d",
+        "operator": "#d4d4d4" if dark else "#59636e",
     }
     if token in Comment:
         return QColor(colors["comment"])

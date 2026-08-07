@@ -99,12 +99,18 @@ exact text: <tag> & "quotes"
 
 ---
 
-## Relative image
+## Images
 
 The image below is loaded relative to this Markdown file:
 
 ![A simple MDPeek document illustration](mdpeek-mark.svg)
 
-![JRS_3.gif (200×200)](https://www.jamarska-zveza.si/images/JRS_3.gif)
+The image below is loaded from a subfolder relative to this Markdown file:
+
+![JRS_3.gif](img/JRS_3.gif)
+
+The image below is loaded from a web:
+
+![A mushroom-head robot drinking bubble tea](https://raw.githubusercontent.com/Codecademy/docs/main/media/codey.jpg)
 
 End of showcase.

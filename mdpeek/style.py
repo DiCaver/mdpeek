@@ -8,11 +8,14 @@ from PySide6.QtGui import (
     QFontDatabase,
     QPalette,
     QTextBlockFormat,
+    QTextCharFormat,
     QTextCursor,
     QTextDocument,
     QTextFormat,
     QTextFrame,
+    QTextFrameFormat,
     QTextTable,
+    QTextTableCellFormat,
 )
 
 from .highlight import apply_syntax_highlighting, find_code_fences
@@ -20,6 +23,9 @@ from .highlight import apply_syntax_highlighting, find_code_fences
 LARGE_WINDOW_GUTTER = 18
 SMALL_WINDOW_GUTTER = 8
 GUTTER_BREAKPOINT = 640
+PANEL_KIND_PROPERTY = QTextFormat.Property.UserProperty + 1
+QUOTE_PANEL = 1
+CODE_PANEL = 2
 
 
 def first_available_font(candidates: tuple[str, ...]) -> str:
@@ -61,6 +67,7 @@ h5 {{ font-size: 11.5pt; font-weight: 600; margin-top: 14px; margin-bottom: 6px;
 h6 {{ color: #57606a; font-size: 10.5pt; font-weight: 600; margin-top: 14px; margin-bottom: 6px; }}
 ul, ol {{ margin-top: 4px; margin-bottom: 12px; }}
 li {{ margin-bottom: 1px; }}
+li.checked::marker {{ content: "\\2611"; }}
 blockquote {{ color: #57606a; background-color: #f6f8fa; border-left: 3px solid #d0d7de; margin: 10px 0 14px 4px; padding: 6px 10px 6px 14px; }}
 a {{ color: #0969da; text-decoration: none; }}
 code {{ background-color: #f1f3f5; color: #1f2328; font-family: \"{code}\"; font-size: 10pt; }}
@@ -92,6 +99,8 @@ def apply_document_style(
 
     document.setDefaultFont(document_font())
     fenced_blocks = []
+    quoted_blocks = []
+    inline_code_ranges: list[tuple[int, int]] = []
     block = document.begin()
     while block.isValid():
         block_format = block.blockFormat()
@@ -108,9 +117,12 @@ def apply_document_style(
             block_format.setTopMargin(18 if heading > 1 else 10)
             block_format.setBottomMargin(10 if heading > 1 else 14)
         if quoted:
-            block_format.setLeftMargin(15)
-            block_format.setRightMargin(6)
-            block_format.setBackground(subtle)
+            quoted_blocks.append(block)
+            block_format.setLeftMargin(0)
+            block_format.setRightMargin(0)
+            block_format.clearBackground()
+            block_format.setTopMargin(0)
+            block_format.setBottomMargin(0)
         if fenced:
             fenced_blocks.append(block)
             # QTextBlock backgrounds cover the natural line box but not extra
@@ -119,11 +131,11 @@ def apply_document_style(
             block_format.setLineHeight(
                 100, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value
             )
-            block_format.setLeftMargin(12)
-            block_format.setRightMargin(12)
+            block_format.setLeftMargin(0)
+            block_format.setRightMargin(0)
             block_format.setTopMargin(0)
             block_format.setBottomMargin(0)
-            block_format.setBackground(subtle)
+            block_format.clearBackground()
         if block.textList() is not None:
             block_format.setBottomMargin(2)
         QTextCursor(block).setBlockFormat(block_format)
@@ -146,6 +158,9 @@ def apply_document_style(
                 char_format.setFontPointSize(10)
                 if not fenced:
                     char_format.setBackground(inline_bg)
+                    inline_code_ranges.append(
+                        (fragment.position(), fragment.position() + fragment.length())
+                    )
             fragment_cursor = QTextCursor(document)
             fragment_cursor.setPosition(fragment.position())
             fragment_cursor.setPosition(
@@ -155,6 +170,36 @@ def apply_document_style(
             iterator += 1
         block = block.next()
 
+    # Give inline code a few pixels of horizontal breathing room by extending
+    # its background over the existing whitespace on either side. Text content
+    # and copy/paste behaviour remain unchanged.
+    for start, end in inline_code_ranges:
+        for position in (start - 1, end):
+            if position < 0 or not document.characterAt(position).isspace():
+                continue
+            padding_cursor = QTextCursor(document)
+            padding_cursor.setPosition(position)
+            padding_cursor.setPosition(position + 1, QTextCursor.MoveMode.KeepAnchor)
+            padding_format = padding_cursor.charFormat()
+            padding_format.setBackground(inline_bg)
+            padding_cursor.setCharFormat(padding_format)
+
+    # Keep the padding above, then insert an equally wide unpainted space as
+    # the outer margin. Work backwards so earlier character positions remain
+    # valid while the document grows.
+    for start, end in sorted(inline_code_ranges, reverse=True):
+        right_margin = QTextCursor(document)
+        right_margin.setPosition(end + 1)
+        right_format = right_margin.charFormat()
+        right_format.clearBackground()
+        right_margin.insertText(" ", right_format)
+
+        left_margin = QTextCursor(document)
+        left_margin.setPosition(start - 1)
+        left_format = left_margin.charFormat()
+        left_format.clearBackground()
+        left_margin.insertText(" ", left_format)
+
     def style_frame(frame: QTextFrame) -> None:
         for child in frame.childFrames():
             if isinstance(child, QTextTable):
@@ -163,7 +208,42 @@ def apply_document_style(
                 table_format.setBorderBrush(border)
                 table_format.setCellPadding(9)
                 table_format.setCellSpacing(0)
+                table_format.setMargin(8)
                 child.setFormat(table_format)
+                for row in range(child.rows()):
+                    for column in range(child.columns()):
+                        cell = child.cellAt(row, column)
+                        cell_format = QTextTableCellFormat(cell.format())
+                        cell_format.setVerticalAlignment(
+                            QTextCharFormat.VerticalAlignment.AlignMiddle
+                        )
+                        if row == 0:
+                            cell_format.setBackground(subtle)
+                        cell.setFormat(cell_format)
+                        if row == 0:
+                            header_cursor = QTextCursor(document)
+                            header_cursor.setPosition(cell.firstPosition())
+                            header_cursor.setPosition(
+                                cell.lastPosition(), QTextCursor.MoveMode.KeepAnchor
+                            )
+                            header_format = QTextCharFormat()
+                            header_format.setFontWeight(QFont.Weight.DemiBold)
+                            header_cursor.mergeCharFormat(header_format)
+                        cell_block = document.findBlock(cell.firstPosition())
+                        while (
+                            cell_block.isValid()
+                            and cell_block.position() <= cell.lastPosition()
+                        ):
+                            cell_block_format = cell_block.blockFormat()
+                            cell_block_format.setTopMargin(0)
+                            cell_block_format.setBottomMargin(0)
+                            if not cell_block.text():
+                                cell_block_format.setLineHeight(
+                                    1,
+                                    QTextBlockFormat.LineHeightTypes.FixedHeight.value,
+                                )
+                            QTextCursor(cell_block).setBlockFormat(cell_block_format)
+                            cell_block = cell_block.next()
             style_frame(child)
 
     style_frame(document.rootFrame())
@@ -177,10 +257,71 @@ def apply_document_style(
         cursor += count
         if not blocks:
             continue
-        first_format = blocks[0].blockFormat()
-        first_format.setTopMargin(9)
-        QTextCursor(blocks[0]).setBlockFormat(first_format)
-        last_format = blocks[-1].blockFormat()
-        last_format.setBottomMargin(9)
-        QTextCursor(blocks[-1]).setBlockFormat(last_format)
         apply_syntax_highlighting(document, blocks, fence.language, dark)
+
+    # QTextBlock margins do not create padding inside its background. Wrap
+    # contiguous structures in frames so their background, padding and outer
+    # spacing are genuinely independent.
+    panels: list[tuple[list, int]] = []
+    quote_group: list = []
+    for quoted_block in quoted_blocks:
+        if quote_group and quote_group[-1].next() != quoted_block:
+            panels.append((quote_group, QUOTE_PANEL))
+            quote_group = []
+        quote_group.append(quoted_block)
+    if quote_group:
+        panels.append((quote_group, QUOTE_PANEL))
+
+    fence_cursor = 0
+    for fence in find_code_fences(markdown):
+        count = len(fence.lines)
+        blocks = fenced_blocks[fence_cursor : fence_cursor + count]
+        fence_cursor += count
+        if blocks:
+            panels.append((blocks, CODE_PANEL))
+
+    for blocks, panel_kind in sorted(
+        panels, key=lambda panel: panel[0][0].position(), reverse=True
+    ):
+        cursor = QTextCursor(document)
+        cursor.setPosition(blocks[0].position())
+        cursor.setPosition(
+            blocks[-1].position() + blocks[-1].length() - 1,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        frame_format = QTextFrameFormat()
+        frame_format.setMargin(8)
+        frame_format.setPadding(12 if panel_kind == CODE_PANEL else 10)
+        frame_format.setBackground(subtle)
+        frame_format.setProperty(PANEL_KIND_PROPERTY, panel_kind)
+        cursor.insertFrame(frame_format)
+
+    # Qt's Markdown parser omits the explicit blank quote marker. Restore its
+    # paragraph break as spacing between blocks inside the shared quote frame.
+    for frame in document.rootFrame().childFrames():
+        if frame.format().property(PANEL_KIND_PROPERTY) != QUOTE_PANEL:
+            continue
+        quote_frame_blocks = []
+        block = document.findBlock(frame.firstPosition())
+        while block.isValid() and block.position() <= frame.lastPosition():
+            if block.text():
+                quote_frame_blocks.append(block)
+            block = block.next()
+        for quoted_block in quote_frame_blocks[:-1]:
+            quoted_format = quoted_block.blockFormat()
+            quoted_format.setBottomMargin(10)
+            QTextCursor(quoted_block).setBlockFormat(quoted_format)
+
+    # Frames require boundary paragraphs. Collapse those implementation-only
+    # blocks to one pixel; the frame margins provide the intended panel gap.
+    block = document.begin()
+    while block.isValid():
+        if not block.text() and QTextCursor(block).currentFrame() == document.rootFrame():
+            block_format = block.blockFormat()
+            block_format.setTopMargin(0)
+            block_format.setBottomMargin(0)
+            block_format.setLineHeight(
+                1, QTextBlockFormat.LineHeightTypes.FixedHeight.value
+            )
+            QTextCursor(block).setBlockFormat(block_format)
+        block = block.next()
