@@ -91,6 +91,25 @@ An unlabeled fence has the same safe fallback:
 exact text: <tag> & "quotes"
 ```
 
+The next two blocks deliberately contain identical code so each copy control can be checked independently:
+
+```text
+identical block
+```
+
+```text
+identical block
+```
+
+Whitespace, blank lines, special characters, and Unicode should copy exactly:
+
+```
+first line
+
+    four spaces
+	and a tab: < > & "quotes" \\ č š ž
+```
+
 | Feature | Example | Expected |
 | :-- | :--: | --: |
 | Unicode | č, š, ž | Preserved |
@@ -98,6 +117,12 @@ exact text: <tag> & "quotes"
 | Code | `inline` | Monospace |
 
 ---
+
+## Consecutive section
+### Empty nested section
+### Following nested section
+
+The headings above exercise empty and consecutive section boundaries.
 
 ## Images
 
@@ -114,3 +139,7 @@ The image below is loaded from a web:
 ![A mushroom-head robot drinking bubble tea](https://raw.githubusercontent.com/Codecademy/docs/main/media/codey.jpg)
 
 End of showcase.
+
+## Final section
+
+This final section continues to the end of the document because no same-level or higher-level heading follows it.

@@ -5,7 +5,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QMimeData, QRectF, Qt, QUrl
+from PySide6.QtCore import QByteArray, QMimeData, QPoint, QRectF, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -15,12 +15,16 @@ from PySide6.QtGui import (
     QPalette,
     QPen,
     QTextBlockFormat,
+    QTextCursor,
     QTextDocument,
     QTextFormat,
     QTextFrameFormat,
 )
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMessageBox, QTextBrowser
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMenu, QMessageBox, QTextBrowser, QToolButton
+
+from .clipboard import html_source_mime_data, plain_mime_data
+from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_document_regions
 
 from .style import (
     PANEL_KIND_PROPERTY,
@@ -45,12 +49,116 @@ You can also pass its path on the command line:
 class MarkdownViewer(QTextBrowser):
     """Read-only browser with remote images and grouped document panels."""
 
+    sectionRequested = Signal(object)
+    codeCopyRequested = Signal(object)
+
     def __init__(self, parent=None) -> None:  # type: ignore[no-untyped-def]
         super().__init__(parent)
         self._network = QNetworkAccessManager(self)
         self._pending_images: set[QUrl] = set()
         self._remote_images: dict[QUrl, QImage] = {}
         self._document_generation = 0
+        self.regions = DocumentRegions()
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+        self._hovered_heading: HeadingRegion | None = None
+        self._hovered_code: CodeRegion | None = None
+        self._section_button = self._overlay_button("§", "Select section")
+        self._section_button.clicked.connect(self._request_hovered_section)
+        self._code_button = self._overlay_button("⧉", "Copy code")
+        self._code_button.clicked.connect(self._request_hovered_code)
+        self.verticalScrollBar().valueChanged.connect(self._position_overlays)
+        self.horizontalScrollBar().valueChanged.connect(self._position_overlays)
+
+    def _overlay_button(self, text: str, tooltip: str) -> QToolButton:
+        button = QToolButton(self.viewport())
+        button.setText(text)
+        button.setToolTip(tooltip)
+        button.setAutoRaise(True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFixedSize(24, 24)
+        button.setStyleSheet(
+            "QToolButton { color: palette(mid); background: palette(base); "
+            "border: 1px solid palette(midlight); border-radius: 4px; }"
+            "QToolButton:hover { color: palette(text); border-color: palette(mid); }"
+        )
+        button.hide()
+        return button
+
+    def set_document_regions(self, regions: DocumentRegions) -> None:
+        self.regions = regions
+        self._hovered_heading = None
+        self._hovered_code = None
+        self._section_button.hide()
+        self._code_button.hide()
+
+    def _request_hovered_section(self) -> None:
+        if self._hovered_heading is not None:
+            self.sectionRequested.emit(self._hovered_heading)
+
+    def _request_hovered_code(self) -> None:
+        if self._hovered_code is not None:
+            self.codeCopyRequested.emit(self._hovered_code)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        super().mouseMoveEvent(event)
+        cursor = self.cursorForPosition(event.position().toPoint())
+        block = cursor.block()
+        level = block.blockFormat().headingLevel()
+        self._hovered_heading = next(
+            (region for region in self.regions.headings
+             if level and region.rendered_start == block.position()), None
+        )
+        self._hovered_code = self.regions.code_at(cursor.position())
+        self._position_overlays()
+
+    def leaveEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        super().leaveEvent(event)
+        if not self._section_button.underMouse():
+            self._hovered_heading = None
+            self._section_button.hide()
+        if not self._code_button.underMouse():
+            self._hovered_code = None
+            self._code_button.hide()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        super().resizeEvent(event)
+        self._position_overlays()
+
+    def _position_overlays(self) -> None:
+        if self._hovered_heading is not None:
+            block = self.document().findBlock(self._hovered_heading.rendered_start)
+            rect = self.document().documentLayout().blockBoundingRect(block)
+            line = block.layout().lineAt(0)
+            x = rect.left() + line.naturalTextRect().right() + 8 - self.horizontalScrollBar().value()
+            x = min(x, self.viewport().width() - self._section_button.width() - 4)
+            y = rect.top() + (rect.height() - self._section_button.height()) / 2 - self.verticalScrollBar().value()
+            self._section_button.move(round(max(2, x)), round(y))
+            self._section_button.show()
+            self._section_button.raise_()
+        else:
+            self._section_button.hide()
+        if self._hovered_code is not None:
+            cursor = self.textCursor()
+            cursor.setPosition(self._hovered_code.rendered_start)
+            frame = cursor.currentFrame()
+            rect = self.document().documentLayout().frameBoundingRect(frame)
+            x = rect.right() - self._code_button.width() - 5 - self.horizontalScrollBar().value()
+            y = rect.top() + 5 - self.verticalScrollBar().value()
+            self._code_button.move(round(max(2, min(x, self.viewport().width() - 28))), round(y))
+            self._code_button.show()
+            self._code_button.raise_()
+        else:
+            self._code_button.hide()
+
+    def show_copied_feedback(self) -> None:
+        self._code_button.setText("✓")
+        self._code_button.setToolTip("Copied")
+        QTimer.singleShot(1200, self._reset_code_feedback)
+
+    def _reset_code_feedback(self) -> None:
+        self._code_button.setText("⧉")
+        self._code_button.setToolTip("Copy code")
 
     def clear_remote_images(self) -> None:
         """Discard image state belonging to the previous document."""
@@ -146,7 +254,11 @@ class MarkdownWindow(QMainWindow):
         super().__init__()
         self.resize(900, 700)
         self.current_path: Path | None = None
+        self.source_markdown = ""
         self.last_open_error: OSError | UnicodeError | None = None
+        # Retain the current transferred wrapper; this avoids a PySide Windows
+        # clipboard ownership edge case when a local QMimeData is collected.
+        self._clipboard_data: QMimeData | None = None
         self.setAcceptDrops(True)
 
         self.viewer = MarkdownViewer()
@@ -170,6 +282,13 @@ class MarkdownWindow(QMainWindow):
         )
         self.setCentralWidget(viewer)
         self._create_file_menu()
+        self._create_edit_menu()
+        viewer.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        viewer.customContextMenuRequested.connect(self._show_context_menu)
+        viewer.selectionChanged.connect(self._update_selection_actions)
+        viewer.cursorPositionChanged.connect(self._update_region_actions)
+        viewer.sectionRequested.connect(self.select_section)
+        viewer.codeCopyRequested.connect(self.copy_code_region)
         self._update_gutter()
 
         if path is None:
@@ -191,11 +310,117 @@ class MarkdownWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
+    def _create_edit_menu(self) -> None:
+        menu = self.menuBar().addMenu("&Edit")
+        self.copy_plain_action = QAction("Copy as &Plain Text", self)
+        self.copy_plain_action.setShortcut(QKeySequence.StandardKey.Copy)
+        self.copy_plain_action.triggered.connect(self.copy_as_plain_text)
+        menu.addAction(self.copy_plain_action)
+        self.copy_html_action = QAction("Copy as &HTML", self)
+        self.copy_html_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        self.copy_html_action.triggered.connect(self.copy_as_html)
+        menu.addAction(self.copy_html_action)
+        menu.addSeparator()
+        self.select_section_action = QAction("Select Current &Section", self)
+        self.select_section_action.triggered.connect(self.select_current_section)
+        menu.addAction(self.select_section_action)
+        self.copy_code_action = QAction("Copy Current Code &Block", self)
+        self.copy_code_action.triggered.connect(self.copy_current_code_block)
+        menu.addAction(self.copy_code_action)
+        menu.addSeparator()
+        self.select_all_action = QAction("Select &All", self)
+        self.select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        self.select_all_action.triggered.connect(self.viewer.selectAll)
+        menu.addAction(self.select_all_action)
+        self._update_selection_actions()
+
+    def _update_selection_actions(self) -> None:
+        selected = self.viewer.textCursor().hasSelection()
+        self.copy_plain_action.setEnabled(selected)
+        self.copy_html_action.setEnabled(selected)
+        self.select_all_action.setEnabled(bool(self.viewer.document().toPlainText()))
+        self._update_region_actions()
+
+    def _cursor_region_position(self) -> int:
+        cursor = self.viewer.textCursor()
+        return cursor.selectionStart() if cursor.hasSelection() else cursor.position()
+
+    def _update_region_actions(self) -> None:
+        position = self._cursor_region_position()
+        self.select_section_action.setEnabled(self.viewer.regions.heading_at(position) is not None)
+        self.copy_code_action.setEnabled(self.viewer.regions.code_at(position) is not None)
+
+    def select_current_section(self) -> None:
+        region = self.viewer.regions.heading_at(self._cursor_region_position())
+        if region is not None:
+            self.select_section(region)
+
+    def select_section(self, region: HeadingRegion) -> None:
+        cursor = self.viewer.textCursor()
+        # Build the selection backwards so its active end is the heading.
+        # QTextBrowser then reveals the beginning rather than scrolling to the
+        # bottom of a long section.
+        cursor.setPosition(region.rendered_end)
+        cursor.setPosition(region.rendered_start, QTextCursor.MoveMode.KeepAnchor)
+        self.viewer.setTextCursor(cursor)
+        self.viewer.ensureCursorVisible()
+
+    def copy_current_code_block(self) -> None:
+        region = self.viewer.regions.code_at(self._cursor_region_position())
+        if region is not None:
+            self.copy_code_region(region)
+
+    def copy_code_region(self, region: CodeRegion) -> None:
+        data = QMimeData()
+        data.setText(region.code)
+        QApplication.clipboard().setMimeData(data)
+        self._clipboard_data = data
+        self.viewer.show_copied_feedback()
+
+    def copy_as_plain_text(self) -> None:
+        data = plain_mime_data(self.viewer.textCursor())
+        if data is not None:
+            QApplication.clipboard().setMimeData(data)
+            self._clipboard_data = data
+
+    def copy_as_html(self) -> None:
+        data = html_source_mime_data(self.viewer.textCursor())
+        if data is not None:
+            QApplication.clipboard().setMimeData(data)
+            self._clipboard_data = data
+
+    def _context_menu(self, position: QPoint) -> QMenu:
+        menu = QMenu(self.viewer)
+        menu.addAction(self.copy_plain_action)
+        menu.addAction(self.copy_html_action)
+        menu.addSeparator()
+        menu.addAction(self.select_section_action)
+        menu.addAction(self.copy_code_action)
+        menu.addSeparator()
+        menu.addAction(self.select_all_action)
+        if self.viewer.anchorAt(position):
+            standard = self.viewer.createStandardContextMenu(position)
+            link_actions = [action for action in standard.actions() if "link" in action.text().lower()]
+            if link_actions:
+                menu.addSeparator()
+                for action in link_actions:
+                    action.setParent(menu)
+                    menu.addAction(action)
+        return menu
+
+    def _show_context_menu(self, position: QPoint) -> None:
+        menu = self._context_menu(position)
+        menu.exec(self.viewer.viewport().mapToGlobal(position))
+
     def _show_empty_document(self) -> None:
         self.setWindowTitle("MDPeek")
         self.viewer.document().setBaseUrl(QUrl())
         self.viewer.setMarkdown(EMPTY_MESSAGE)
         apply_document_style(self.viewer.document(), self.viewer.palette(), EMPTY_MESSAGE)
+        self.viewer.set_document_regions(DocumentRegions())
+        self.source_markdown = ""
+        self.current_path = None
+        self._update_selection_actions()
 
     def _display_document(self, path: Path, markdown: str) -> None:
         resolved = path.resolve()
@@ -203,10 +428,13 @@ class MarkdownWindow(QMainWindow):
         self.viewer.document().setBaseUrl(QUrl.fromLocalFile(str(resolved.parent) + "/"))
         self.viewer.setMarkdown(markdown)
         apply_document_style(self.viewer.document(), self.viewer.palette(), markdown)
+        self.viewer.set_document_regions(build_document_regions(self.viewer.document(), markdown))
         self.viewer.verticalScrollBar().setValue(0)
         self.viewer.horizontalScrollBar().setValue(0)
         self.current_path = resolved
+        self.source_markdown = markdown
         self.setWindowTitle(f"{resolved.name} — MDPeek")
+        self._update_selection_actions()
 
     def open_file(self, path: str | Path, *, show_error: bool = True) -> bool:
         """Read and display a UTF-8 file, preserving the document on failure."""
