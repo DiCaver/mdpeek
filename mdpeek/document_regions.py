@@ -39,6 +39,7 @@ class HeadingRegion:
     level: int
     rendered_start: int
     rendered_end: int
+    title: str = ""
     source_start: int | None = None
     source_end: int | None = None
 
@@ -166,7 +167,7 @@ def build_document_regions(document: QTextDocument, markdown: str) -> DocumentRe
                 break
         source = source_headings[index] if index < len(source_headings) else None
         headings.append(HeadingRegion(
-            level, heading_block.position(), end,
+            level, heading_block.position(), end, heading_block.text(),
             source.start if source and source.level == level else None,
             source.end if source and source.level == level else None,
         ))

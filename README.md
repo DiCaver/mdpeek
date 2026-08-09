@@ -34,6 +34,8 @@ Running either command without a filepath opens the empty screen. Close the wind
 
 While MDPeek is running, press `Ctrl+O` (or choose **File > Open…**) to select a file. You can also drag one `.md` or `.markdown` file anywhere onto the window. A newly opened file replaces the current document in the same window; MDPeek remains a read-only viewer.
 
+The resizable **Document Outline** sidebar displays rendered H1–H6 headings as a hierarchy. Click a heading to scroll to that exact occurrence; repeated titles remain separate, and the item for the section at the top of the reading area is highlighted as you scroll. Long titles are elided with their full text in a tooltip, empty headings use an untitled fallback, and a document with no headings shows a quiet message. Collapse branches with their disclosure controls. Use `Ctrl+H` or **View > Document Outline** to show or hide the sidebar; its visibility and width are retained while the application is running.
+
 Selection commands are available from both the **Edit** menu and the document context menu:
 
 - `Ctrl+A` selects the rendered document.
@@ -72,7 +74,7 @@ MDPeek provides a single read-only, selectable document window using Qt's built-
 
 Qt retains useful rendered structure and character formatting (including heading levels, lists, links, tables, and code-block flags), but it does not retain original Markdown source offsets. Direct cursor-to-source position mapping breaks as punctuation disappears or text transforms in headings, emphasis, links, lists, tables, fenced code, and entities; MDPeek's panel styling also inserts document frame markers around quotes and code. Unicode survives rendering, but its rendered offset is not enough to recover surrounding source syntax.
 
-For Phase 5, the recommended approach is to record source ranges while parsing Markdown and associate them with rendered ranges before presentation styling. A source-to-render mapping therefore appears necessary for reliable partial Copy as Markdown. Phase 4 stores the exact current source and includes only the reliable internal special case: a complete rendered-document selection maps back to that exact source.
+For a future Copy-as-Markdown phase, the recommended approach is to record source ranges while parsing Markdown and associate them with rendered ranges before presentation styling. A source-to-render mapping therefore appears necessary for reliable partial Copy as Markdown. Phase 4 stores the exact current source and includes only the reliable internal special case: a complete rendered-document selection maps back to that exact source.
 
 ## License
 

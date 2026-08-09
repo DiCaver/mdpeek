@@ -3,15 +3,31 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
-from PySide6.QtTest import QSignalSpy
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
 from mdpeek.app import MarkdownWindow
-from mdpeek.document_regions import scan_source_code_fences, scan_source_headings
+from mdpeek.document_regions import HeadingRegion, scan_source_code_fences, scan_source_headings
+from mdpeek.outline import NO_HEADINGS, UNTITLED_HEADING, heading_parent_indexes
 
 
 class SourceRegionTests(unittest.TestCase):
+    def test_outline_hierarchy_handles_siblings_nesting_and_skipped_levels(self) -> None:
+        headings = tuple(
+            HeadingRegion(level, index, index + 1, title=title)
+            for index, (level, title) in enumerate([
+                (1, "Root"), (2, "Setup"), (3, "Windows"), (3, "Linux"),
+                (2, "Usage"), (4, "Advanced"), (1, "Other"),
+            ])
+        )
+        self.assertEqual(heading_parent_indexes(headings), [None, 0, 1, 1, 0, 4, None])
+
+    def test_outline_constants_are_quiet_fallbacks(self) -> None:
+        self.assertEqual(UNTITLED_HEADING, "(Untitled heading)")
+        self.assertEqual(NO_HEADINGS, "No headings in this document")
+
     def test_heading_scanner_ignores_fences_and_supports_repeated_and_setext(self) -> None:
         source = "# Same\n\n```\n## Not a heading\n```\nSame\n----\n# Same\n"
         self.assertEqual([h.level for h in scan_source_headings(source)], [1, 2, 1])
@@ -49,6 +65,69 @@ class RenderedRegionTests(unittest.TestCase):
         for text in ("Install", "intro", "Windows", "win", "Detail", "deep"):
             self.assertIn(text, selected)
         self.assertNotIn("Usage", selected)
+
+    def test_outline_preserves_titles_repeats_unicode_setext_and_empty(self) -> None:
+        long_title = "Very long " * 20
+        window = self.window(f"# Same\n# Same\nČebelica\n=========\n#\n# {long_title}")
+        titles = [item.text(0) for item in window.outline._items]
+        self.assertEqual(titles[:4], ["Same", "Same", "Čebelica", UNTITLED_HEADING])
+        self.assertEqual(titles[4], long_title.strip())
+        self.assertEqual(window.outline._items[4].toolTip(0), long_title.strip())
+
+    def test_no_headings_and_welcome_outline_states(self) -> None:
+        window = self.window("plain text")
+        self.assertEqual(window.outline.tree.topLevelItem(0).text(0), NO_HEADINGS)
+        empty = MarkdownWindow()
+        self.windows.append(empty)
+        self.assertEqual(empty.outline.tree.topLevelItemCount(), 0)
+
+    def test_outline_navigation_preserves_selection_and_distinguishes_repeats(self) -> None:
+        source = "# Same\nselected body\n\n" + "\n\n".join(f"filler {n}" for n in range(40)) + "\n# Same\nfinal"
+        window = self.window(source)
+        window.resize(700, 260)
+        window.show()
+        self.app.processEvents()
+        selection = window.viewer.document().find("selected body")
+        window.viewer.setTextCursor(selection)
+        before = (selection.selectionStart(), selection.selectionEnd())
+        window._navigate_to_heading(1)
+        self.app.processEvents()
+        after = window.viewer.textCursor()
+        self.assertEqual((after.selectionStart(), after.selectionEnd()), before)
+        self.assertGreater(window.viewer.verticalScrollBar().value(), 0)
+        self.assertIs(window.outline.tree.currentItem(), window.outline._items[1])
+        window._navigate_to_heading(0)
+        self.assertEqual(window.viewer.verticalScrollBar().value(), 0)
+
+    def test_scroll_updates_deepest_active_item_without_navigation_feedback(self) -> None:
+        source = "# Root\n\n" + "\n\n".join(f"intro {n}" for n in range(25)) + "\n## Child\n### Deep\nbody"
+        window = self.window(source)
+        window.resize(700, 240)
+        window.show()
+        self.app.processEvents()
+        activated = QSignalSpy(window.outline.headingActivated)
+        window.viewer.verticalScrollBar().setValue(window.viewer.verticalScrollBar().maximum())
+        self.app.processEvents()
+        self.assertIs(window.outline.tree.currentItem(), window.outline._items[2])
+        self.assertEqual(activated.count(), 0)
+
+    def test_outline_action_visibility_lifecycle_and_failed_open(self) -> None:
+        window = self.window("# First")
+        window.show()
+        self.app.processEvents()
+        self.assertTrue(window.outline_action.isChecked())
+        QTest.keyClick(window, Qt.Key.Key_H, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        self.assertFalse(window.outline.isVisible())
+        self.assertFalse(window.outline_action.isChecked())
+        QTest.keyClick(window, Qt.Key.Key_H, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        self.assertTrue(window.outline.isVisible())
+        old_items = list(window.outline._items)
+        self.assertFalse(window.open_file("tests/fixtures/missing.md", show_error=False))
+        self.assertEqual(window.outline._items, old_items)
+        window._display_document(Path("second.md"), "## Second")
+        self.assertEqual([item.text(0) for item in window.outline._items], ["Second"])
 
     def test_h3_stops_at_same_or_higher_heading(self) -> None:
         window = self.window("## A\n### One\n1\n### Two\n2\n## B\n3")

@@ -124,6 +124,20 @@ first line
 
 The headings above exercise empty and consecutive section boundaries.
 
+#### Skipped-level child
+
+This H4 exercises skipped-level outline nesting.
+
+### Repeated title
+### Repeated title
+
+Repeated titles remain distinct outline destinations.
+
+Setext outline heading
+----------------------
+
+This heading exercises Setext title extraction.
+
 ## Images
 
 The image below is loaded relative to this Markdown file:

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMenu, QMe
 
 from .clipboard import html_source_mime_data, plain_mime_data
 from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_document_regions
+from .outline import DocumentOutline
 
 from .style import (
     PANEL_KIND_PROPERTY,
@@ -51,6 +52,7 @@ class MarkdownViewer(QTextBrowser):
 
     sectionRequested = Signal(object)
     codeCopyRequested = Signal(object)
+    visiblePositionChanged = Signal()
 
     def __init__(self, parent=None) -> None:  # type: ignore[no-untyped-def]
         super().__init__(parent)
@@ -67,7 +69,7 @@ class MarkdownViewer(QTextBrowser):
         self._section_button.clicked.connect(self._request_hovered_section)
         self._code_button = self._overlay_button("⧉", "Copy code")
         self._code_button.clicked.connect(self._request_hovered_code)
-        self.verticalScrollBar().valueChanged.connect(self._position_overlays)
+        self.verticalScrollBar().valueChanged.connect(self._visible_position_changed)
         self.horizontalScrollBar().valueChanged.connect(self._position_overlays)
 
     def _overlay_button(self, text: str, tooltip: str) -> QToolButton:
@@ -124,6 +126,11 @@ class MarkdownViewer(QTextBrowser):
     def resizeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         super().resizeEvent(event)
         self._position_overlays()
+        self.visiblePositionChanged.emit()
+
+    def _visible_position_changed(self) -> None:
+        self._position_overlays()
+        self.visiblePositionChanged.emit()
 
     def _position_overlays(self) -> None:
         if self._hovered_heading is not None:
@@ -265,6 +272,7 @@ class MarkdownWindow(QMainWindow):
         viewer = self.viewer
         # Let the window own file drops even when the cursor is over the document.
         viewer.setAcceptDrops(False)
+        viewer.setMinimumWidth(320)
         viewer.setFrameShape(QTextBrowser.Shape.NoFrame)
         viewer_palette = viewer.palette()
         viewer_palette.setBrush(
@@ -283,12 +291,14 @@ class MarkdownWindow(QMainWindow):
         self.setCentralWidget(viewer)
         self._create_file_menu()
         self._create_edit_menu()
+        self._create_view_menu()
         viewer.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         viewer.customContextMenuRequested.connect(self._show_context_menu)
         viewer.selectionChanged.connect(self._update_selection_actions)
         viewer.cursorPositionChanged.connect(self._update_region_actions)
         viewer.sectionRequested.connect(self.select_section)
         viewer.codeCopyRequested.connect(self.copy_code_region)
+        viewer.visiblePositionChanged.connect(self._update_active_outline_item)
         self._update_gutter()
 
         if path is None:
@@ -297,6 +307,20 @@ class MarkdownWindow(QMainWindow):
             self._display_document(path, markdown)
         else:
             self.open_file(path)
+
+    def _create_view_menu(self) -> None:
+        self.outline = DocumentOutline(self)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.outline)
+        self.resizeDocks([self.outline], [240], Qt.Orientation.Horizontal)
+        menu = self.menuBar().addMenu("&View")
+        self.outline_action = self.outline.toggleViewAction()
+        self.outline_action.setText("Document &Outline")
+        self.outline_action.setShortcut(QKeySequence("Ctrl+H"))
+        menu.addAction(self.outline_action)
+        self.outline.headingActivated.connect(self._navigate_to_heading)
+        self.outline.visibilityChanged.connect(
+            lambda visible: QTimer.singleShot(0, self._update_active_outline_item) if visible else None
+        )
 
     def _create_file_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -364,6 +388,36 @@ class MarkdownWindow(QMainWindow):
         cursor.setPosition(region.rendered_start, QTextCursor.MoveMode.KeepAnchor)
         self.viewer.setTextCursor(cursor)
         self.viewer.ensureCursorVisible()
+        QTimer.singleShot(0, self._update_active_outline_item)
+
+    def _navigate_to_heading(self, index: int) -> None:
+        if not 0 <= index < len(self.viewer.regions.headings):
+            return
+        region = self.viewer.regions.headings[index]
+        block = self.viewer.document().findBlock(region.rendered_start)
+        top = self.viewer.document().documentLayout().blockBoundingRect(block).top()
+        self.viewer.verticalScrollBar().setValue(max(0, round(top - 12)))
+        self.outline.set_active_index(index)
+
+    def _top_visible_position(self) -> int:
+        return self.viewer.cursorForPosition(QPoint(0, 8)).position()
+
+    def _update_active_outline_item(self) -> None:
+        headings = self.viewer.regions.headings
+        if not headings:
+            self.outline.set_active_index(None)
+            return
+        scrollbar = self.viewer.verticalScrollBar()
+        if scrollbar.maximum() > 0 and scrollbar.value() >= scrollbar.maximum():
+            self.outline.set_active_index(len(headings) - 1)
+            return
+        position = self._top_visible_position()
+        region = self.viewer.regions.heading_at(position)
+        if region is None:
+            index = 0
+        else:
+            index = headings.index(region)
+        self.outline.set_active_index(index)
 
     def copy_current_code_block(self) -> None:
         region = self.viewer.regions.code_at(self._cursor_region_position())
@@ -418,6 +472,7 @@ class MarkdownWindow(QMainWindow):
         self.viewer.setMarkdown(EMPTY_MESSAGE)
         apply_document_style(self.viewer.document(), self.viewer.palette(), EMPTY_MESSAGE)
         self.viewer.set_document_regions(DocumentRegions())
+        self.outline.set_regions(DocumentRegions(), empty_document=True)
         self.source_markdown = ""
         self.current_path = None
         self._update_selection_actions()
@@ -428,7 +483,9 @@ class MarkdownWindow(QMainWindow):
         self.viewer.document().setBaseUrl(QUrl.fromLocalFile(str(resolved.parent) + "/"))
         self.viewer.setMarkdown(markdown)
         apply_document_style(self.viewer.document(), self.viewer.palette(), markdown)
-        self.viewer.set_document_regions(build_document_regions(self.viewer.document(), markdown))
+        regions = build_document_regions(self.viewer.document(), markdown)
+        self.viewer.set_document_regions(regions)
+        self.outline.set_regions(regions)
         self.viewer.verticalScrollBar().setValue(0)
         self.viewer.horizontalScrollBar().setValue(0)
         self.current_path = resolved
