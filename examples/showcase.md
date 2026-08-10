@@ -107,7 +107,7 @@ Whitespace, blank lines, special characters, and Unicode should copy exactly:
 first line
 
     four spaces
-	and a tab: < > & "quotes" \\ č š ž
+ and a tab: < > & "quotes" \\ č š ž
 ```
 
 | Feature | Example | Expected |
@@ -119,7 +119,9 @@ first line
 ---
 
 ## Consecutive section
+
 ### Empty nested section
+
 ### Following nested section
 
 The headings above exercise empty and consecutive section boundaries.
@@ -129,6 +131,7 @@ The headings above exercise empty and consecutive section boundaries.
 This H4 exercises skipped-level outline nesting.
 
 ### Repeated title
+
 ### Repeated title
 
 Repeated titles remain distinct outline destinations.
