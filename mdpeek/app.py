@@ -26,6 +26,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMenu, QMe
 from .clipboard import html_source_mime_data, plain_mime_data
 from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_document_regions
 from .outline import DocumentOutline
+from .navigation import NavigationHistory, normalize_path
 
 from .style import (
     PANEL_KIND_PROPERTY,
@@ -263,6 +264,8 @@ class MarkdownWindow(QMainWindow):
         self.current_path: Path | None = None
         self.source_markdown = ""
         self.last_open_error: OSError | UnicodeError | None = None
+        self.history = NavigationHistory()
+        self._scroll_restore_generation = 0
         # Retain the current transferred wrapper; this avoids a PySide Windows
         # clipboard ownership edge case when a local QMimeData is collected.
         self._clipboard_data: QMimeData | None = None
@@ -305,6 +308,8 @@ class MarkdownWindow(QMainWindow):
             self._show_empty_document()
         elif markdown is not None:
             self._display_document(path, markdown)
+            self.history.add(path)
+            self._update_navigation_actions()
         else:
             self.open_file(path)
 
@@ -324,6 +329,17 @@ class MarkdownWindow(QMainWindow):
 
     def _create_file_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
+        self.back_action = QAction("&Back", self)
+        self.back_action.setShortcut(QKeySequence.StandardKey.Back)
+        self.back_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.back_action.triggered.connect(self.go_back)
+        file_menu.addAction(self.back_action)
+        self.forward_action = QAction("&Forward", self)
+        self.forward_action.setShortcut(QKeySequence.StandardKey.Forward)
+        self.forward_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.forward_action.triggered.connect(self.go_forward)
+        file_menu.addAction(self.forward_action)
+        file_menu.addSeparator()
         self.open_action = QAction("&Open…", self)
         self.open_action.setShortcut("Ctrl+O")
         self.open_action.triggered.connect(self.show_open_dialog)
@@ -333,6 +349,11 @@ class MarkdownWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        self._update_navigation_actions()
+
+    def _update_navigation_actions(self) -> None:
+        self.back_action.setEnabled(self.history.can_go_back)
+        self.forward_action.setEnabled(self.history.can_go_forward)
 
     def _create_edit_menu(self) -> None:
         menu = self.menuBar().addMenu("&Edit")
@@ -478,7 +499,8 @@ class MarkdownWindow(QMainWindow):
         self._update_selection_actions()
 
     def _display_document(self, path: Path, markdown: str) -> None:
-        resolved = path.resolve()
+        resolved = normalize_path(path)
+        self._scroll_restore_generation += 1
         self.viewer.clear_remote_images()
         self.viewer.document().setBaseUrl(QUrl.fromLocalFile(str(resolved.parent) + "/"))
         self.viewer.setMarkdown(markdown)
@@ -493,9 +515,24 @@ class MarkdownWindow(QMainWindow):
         self.setWindowTitle(f"{resolved.name} — MDPeek")
         self._update_selection_actions()
 
+    def _restore_vertical_position(self, position: int) -> None:
+        """Restore now and once more after Qt completes deferred layout."""
+        generation = self._scroll_restore_generation
+
+        def restore() -> None:
+            if generation != self._scroll_restore_generation:
+                return
+            scrollbar = self.viewer.verticalScrollBar()
+            scrollbar.setValue(max(scrollbar.minimum(), min(int(position), scrollbar.maximum())))
+            self._update_active_outline_item()
+            self.viewer.viewport().update()
+
+        restore()
+        QTimer.singleShot(0, restore)
+
     def open_file(self, path: str | Path, *, show_error: bool = True) -> bool:
         """Read and display a UTF-8 file, preserving the document on failure."""
-        candidate = Path(path)
+        candidate = normalize_path(path)
         try:
             markdown = read_markdown(candidate)
         except (OSError, UnicodeError) as error:
@@ -507,8 +544,47 @@ class MarkdownWindow(QMainWindow):
                 )
             return False
         self.last_open_error = None
+        refresh = self.history.current is not None and self.history.current.path == candidate
+        saved_position = self.viewer.verticalScrollBar().value()
+        self.history.record_current_position(saved_position)
         self._display_document(candidate, markdown)
+        if refresh:
+            self._restore_vertical_position(saved_position)
+        else:
+            self.history.add(candidate)
+        self._update_navigation_actions()
         return True
+
+    def _navigate_history(self, offset: int, *, show_error: bool = True) -> bool:
+        target_index = self.history.target_index(offset)
+        if target_index is None:
+            self._update_navigation_actions()
+            return False
+        target = self.history.entries[target_index]
+        try:
+            markdown = read_markdown(target.path)
+        except (OSError, UnicodeError) as error:
+            self.last_open_error = error
+            if show_error:
+                QMessageBox.critical(
+                    self, "Could not open file",
+                    f"MDPeek could not open:\n{target.path}\n\n{error}",
+                )
+            self._update_navigation_actions()
+            return False
+        self.last_open_error = None
+        self.history.record_current_position(self.viewer.verticalScrollBar().value())
+        self._display_document(target.path, markdown)
+        self.history.move_to(target_index)
+        self._restore_vertical_position(target.vertical_position)
+        self._update_navigation_actions()
+        return True
+
+    def go_back(self) -> bool:
+        return self._navigate_history(-1)
+
+    def go_forward(self) -> bool:
+        return self._navigate_history(1)
 
     def show_open_dialog(self) -> None:
         start = self.current_path.parent if self.current_path else Path.home()

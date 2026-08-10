@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QTextTableCellFormat,
 )
 from PySide6.QtWidgets import QApplication, QTextBrowser
+from PySide6.QtTest import QTest
 
 from mdpeek.app import EMPTY_MESSAGE, MarkdownWindow, build_parser, read_markdown
 from mdpeek.clipboard import markdown_for_complete_selection, plain_mime_data, selected_clean_html
@@ -157,6 +158,96 @@ class MDPeekTests(unittest.TestCase):
     def test_open_action_has_standard_shortcut(self) -> None:
         window = MarkdownWindow()
         self.assertEqual(window.open_action.shortcut().toString(), "Ctrl+O")
+
+    def test_navigation_actions_and_transactional_history(self) -> None:
+        window = MarkdownWindow()
+        self.assertFalse(window.back_action.isEnabled())
+        self.assertFalse(window.forward_action.isEnabled())
+        self.assertTrue(window.open_file("README.md"))
+        self.assertTrue(window.open_file("examples/showcase.md"))
+        self.assertTrue(window.back_action.isEnabled())
+        self.assertEqual(window.back_action.shortcut().toString(), "Alt+Left")
+        self.assertEqual(window.forward_action.shortcut().toString(), "Alt+Right")
+        self.assertTrue(window._navigate_history(-1, show_error=False))
+        self.assertEqual(window.current_path, Path("README.md").resolve())
+        self.assertTrue(window.forward_action.isEnabled())
+        before = list(window.history.entries)
+        self.assertFalse(window.open_file("missing.md", show_error=False))
+        self.assertEqual(window.history.entries, before)
+        self.assertTrue(window.forward_action.isEnabled())
+        self.assertTrue(window.open_file("tests/fixtures/drop.MARKDOWN"))
+        self.assertFalse(window.forward_action.isEnabled())
+
+    def test_navigation_shortcuts_work_from_viewer_and_outline(self) -> None:
+        window = MarkdownWindow()
+        window.open_file("README.md")
+        window.open_file("examples/showcase.md")
+        window.show()
+        self.app.processEvents()
+        window.viewer.setFocus()
+        QTest.keyClick(window.viewer, Qt.Key.Key_Left, Qt.KeyboardModifier.AltModifier)
+        self.app.processEvents()
+        self.assertEqual(window.current_path, Path("README.md").resolve())
+        window.outline.tree.setFocus()
+        QTest.keyClick(window.outline.tree, Qt.Key.Key_Right, Qt.KeyboardModifier.AltModifier)
+        self.app.processEvents()
+        self.assertEqual(window.current_path, Path("examples/showcase.md").resolve())
+
+    def test_navigation_saves_and_restores_clamped_vertical_position(self) -> None:
+        window = MarkdownWindow()
+        window.resize(500, 300)
+        window.show()
+        window.open_file("README.md")
+        self.app.processEvents()
+        scrollbar = window.viewer.verticalScrollBar()
+        saved = min(120, scrollbar.maximum())
+        self.assertGreater(saved, 0)
+        scrollbar.setValue(saved)
+        window.open_file("examples/showcase.md")
+        self.assertEqual(window.history.entries[0].vertical_position, saved)
+        window.go_back()
+        self.app.processEvents()
+        self.assertEqual(scrollbar.value(), min(saved, scrollbar.maximum()))
+
+    def test_navigation_reloads_disk_and_refresh_does_not_append(self) -> None:
+        first = Path("tests/fixtures/_navigation_first.md")
+        second = Path("tests/fixtures/_navigation_second.md")
+        try:
+            first.write_text("# First\n\nold", encoding="utf-8")
+            second.write_text("# Second", encoding="utf-8")
+            window = MarkdownWindow()
+            self.assertTrue(window.open_file(first))
+            self.assertTrue(window.open_file(first.parent / "." / first.name))
+            self.assertEqual(len(window.history.entries), 1)
+            self.assertTrue(window.open_file(second))
+            first.write_text("# First\n\nnew from disk", encoding="utf-8")
+            self.assertTrue(window._navigate_history(-1, show_error=False))
+            self.assertIn("new from disk", window.viewer.toPlainText())
+            self.assertEqual(len(window.history.entries), 2)
+        finally:
+            first.unlink(missing_ok=True)
+            second.unlink(missing_ok=True)
+
+    def test_failed_history_navigation_is_retryable(self) -> None:
+        first = Path("tests/fixtures/_navigation_first.md")
+        second = Path("tests/fixtures/_navigation_second.md")
+        try:
+            first.write_text("first", encoding="utf-8")
+            second.write_text("second", encoding="utf-8")
+            window = MarkdownWindow()
+            window.open_file(first)
+            window.open_file(second)
+            first.unlink()
+            self.assertFalse(window._navigate_history(-1, show_error=False))
+            self.assertEqual(window.current_path, second.resolve())
+            self.assertEqual(window.history.current_index, 1)
+            self.assertTrue(window.back_action.isEnabled())
+            first.write_text("restored", encoding="utf-8")
+            self.assertTrue(window._navigate_history(-1, show_error=False))
+            self.assertEqual(window.viewer.toPlainText(), "restored")
+        finally:
+            first.unlink(missing_ok=True)
+            second.unlink(missing_ok=True)
 
     def test_clipboard_actions_follow_selection(self) -> None:
         window = MarkdownWindow(Path("example.md"), "Visible text")
