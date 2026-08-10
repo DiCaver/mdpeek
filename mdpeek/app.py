@@ -24,6 +24,7 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequ
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMenu, QMessageBox, QTextBrowser, QToolButton
 
 from .clipboard import html_source_mime_data, plain_mime_data
+from .markdown_copy import markdown_mime_data
 from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_document_regions
 from .outline import DocumentOutline
 from .navigation import NavigationHistory, normalize_path
@@ -373,6 +374,11 @@ class MarkdownWindow(QMainWindow):
         self.copy_html_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         self.copy_html_action.triggered.connect(self.copy_as_html)
         menu.addAction(self.copy_html_action)
+        self.copy_markdown_action = QAction("Copy as &Markdown", self)
+        self.copy_markdown_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
+        self.copy_markdown_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.copy_markdown_action.triggered.connect(self.copy_as_markdown)
+        menu.addAction(self.copy_markdown_action)
         menu.addSeparator()
         self.select_section_action = QAction("Select Current &Section", self)
         self.select_section_action.triggered.connect(self.select_current_section)
@@ -391,6 +397,7 @@ class MarkdownWindow(QMainWindow):
         selected = self.viewer.textCursor().hasSelection()
         self.copy_plain_action.setEnabled(selected)
         self.copy_html_action.setEnabled(selected)
+        self.copy_markdown_action.setEnabled(selected and self.current_path is not None)
         self.select_all_action.setEnabled(bool(self.viewer.document().toPlainText()))
         self._update_region_actions()
 
@@ -472,23 +479,24 @@ class MarkdownWindow(QMainWindow):
             QApplication.clipboard().setMimeData(data)
             self._clipboard_data = data
 
+    def copy_as_markdown(self) -> None:
+        data = markdown_mime_data(
+            self.viewer.textCursor(), self.source_markdown, self.viewer.regions
+        )
+        if data is not None:
+            QApplication.clipboard().setMimeData(data)
+            self._clipboard_data = data
+
     def _context_menu(self, position: QPoint) -> QMenu:
         menu = QMenu(self.viewer)
         menu.addAction(self.copy_plain_action)
         menu.addAction(self.copy_html_action)
+        menu.addAction(self.copy_markdown_action)
         menu.addSeparator()
         menu.addAction(self.select_section_action)
         menu.addAction(self.copy_code_action)
         menu.addSeparator()
         menu.addAction(self.select_all_action)
-        if self.viewer.anchorAt(position):
-            standard = self.viewer.createStandardContextMenu(position)
-            link_actions = [action for action in standard.actions() if "link" in action.text().lower()]
-            if link_actions:
-                menu.addSeparator()
-                for action in link_actions:
-                    action.setParent(menu)
-                    menu.addAction(action)
         return menu
 
     def _show_context_menu(self, position: QPoint) -> None:

@@ -253,10 +253,12 @@ class MDPeekTests(unittest.TestCase):
         window = MarkdownWindow(Path("example.md"), "Visible text")
         self.assertFalse(window.copy_plain_action.isEnabled())
         self.assertFalse(window.copy_html_action.isEnabled())
+        self.assertFalse(window.copy_markdown_action.isEnabled())
         self.assertTrue(window.select_all_action.isEnabled())
         window.viewer.selectAll()
         self.assertTrue(window.copy_plain_action.isEnabled())
         self.assertTrue(window.copy_html_action.isEnabled())
+        self.assertTrue(window.copy_markdown_action.isEnabled())
         self.assertEqual(window.copy_plain_action.shortcut(), QKeySequence.StandardKey.Copy)
         self.assertEqual(window.select_all_action.shortcut(), QKeySequence.StandardKey.SelectAll)
         self.assertEqual(window.copy_html_action.shortcut().toString(), "Ctrl+Shift+C")
@@ -334,8 +336,8 @@ class MDPeekTests(unittest.TestCase):
         menu = window._context_menu(QPoint(0, 0))
         labels = [action.text().replace("&", "") for action in menu.actions() if not action.isSeparator()]
         self.assertEqual(labels, [
-            "Copy as Plain Text", "Copy as HTML", "Select Current Section",
-            "Copy Current Code Block", "Select All",
+            "Copy as Plain Text", "Copy as HTML", "Copy as Markdown",
+            "Select Current Section", "Copy Current Code Block", "Select All",
         ])
         for editing in ("Cut", "Paste", "Delete", "Undo"):
             self.assertNotIn(editing, labels)

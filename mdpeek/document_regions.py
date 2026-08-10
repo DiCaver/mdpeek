@@ -54,6 +54,7 @@ class CodeRegion:
     code: str
     source_start: int
     source_end: int
+    language: str | None = None
 
     def contains(self, position: int) -> bool:
         return self.rendered_start <= position < self.rendered_end
@@ -183,7 +184,7 @@ def build_document_regions(document: QTextDocument, markdown: str) -> DocumentRe
     # ``"\n"`` and does produce a panel, so it remains interactive.
     sources = [source for source in scan_source_code_fences(markdown) if source.code]
     code_blocks = tuple(
-        CodeRegion(frame.firstPosition(), frame.lastPosition(), source.code, source.start, source.end)
+        CodeRegion(frame.firstPosition(), frame.lastPosition(), source.code, source.start, source.end, source.language)
         for frame, source in zip(panels, sources)
     )
     return DocumentRegions(tuple(headings), code_blocks)

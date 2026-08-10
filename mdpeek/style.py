@@ -188,17 +188,24 @@ def apply_document_style(
     # the outer margin. Work backwards so earlier character positions remain
     # valid while the document grows.
     for start, end in sorted(inline_code_ranges, reverse=True):
-        right_margin = QTextCursor(document)
-        right_margin.setPosition(end + 1)
-        right_format = right_margin.charFormat()
-        right_format.clearBackground()
-        right_margin.insertText(" ", right_format)
+        code_block = document.findBlock(start)
+        # Paragraph separators are not visual padding. Inserting beside one
+        # can make Qt move the spacer into an adjacent paragraph (and corrupt
+        # links there), so add the cosmetic margin only for real surrounding
+        # whitespace in the same block.
+        if document.findBlock(end).isValid() and document.findBlock(end) == code_block:
+            right_margin = QTextCursor(document)
+            right_margin.setPosition(end + 1)
+            right_format = right_margin.charFormat()
+            right_format.clearBackground()
+            right_margin.insertText(" ", right_format)
 
-        left_margin = QTextCursor(document)
-        left_margin.setPosition(start - 1)
-        left_format = left_margin.charFormat()
-        left_format.clearBackground()
-        left_margin.insertText(" ", left_format)
+        if start > 0 and document.findBlock(start - 1) == code_block:
+            left_margin = QTextCursor(document)
+            left_margin.setPosition(start - 1)
+            left_format = left_margin.charFormat()
+            left_format.clearBackground()
+            left_margin.insertText(" ", left_format)
 
     def style_frame(frame: QTextFrame) -> None:
         for child in frame.childFrames():

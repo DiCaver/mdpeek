@@ -54,6 +54,15 @@ Selection commands are available from both the **Edit** menu and the document co
 - `Ctrl+A` selects the rendered document.
 - `Ctrl+C` copies the selected visible text as plain text.
 - `Ctrl+Shift+C` copies the selection as clean semantic HTML source.
+- `Ctrl+Shift+M` copies the selection as balanced Markdown.
+
+| Command | Clipboard result |
+| --- | --- |
+| Copy | Rendered plain text |
+| Copy as HTML | Clean HTML plus plain-text fallback |
+| Copy as Markdown | Selection represented as Markdown |
+
+**Copy as Markdown** preserves headings, emphasis, links, lists, quotes, code, tables, and other available Markdown structure. Partial formatted selections receive balanced delimiters, while `Ctrl+A` uses the exact loaded source—including source-only definitions, comments, and original whitespace—where possible. The command is available in the Edit menu and, with the other two formats, in the document context menu.
 
 Move the pointer over a rendered heading to reveal its **Select section** control. It selects the heading and everything below it, including nested subsections, stopping immediately before the next heading of the same or a higher level (or at the end of the document). Selecting does not copy or change the document; use the existing plain-text or HTML command afterward. **Edit > Select Current Section** provides the same operation for the section containing the text cursor or the start of the current selection.
 
@@ -81,13 +90,7 @@ python -m unittest discover -s tests
 
 ## Scope
 
-MDPeek provides a single read-only, selectable document window using Qt's built-in Markdown renderer. External links open in the system browser and relative images resolve from the currently open Markdown file's folder. Editing, tabs, recent files, automatic file watching, file associations, themes, and installers are outside the current scope. Copy as Markdown remains planned; it is not generally available because partial rendered selections cannot yet be mapped reliably to exact source ranges.
-
-## Copy as Markdown investigation
-
-Qt retains useful rendered structure and character formatting (including heading levels, lists, links, tables, and code-block flags), but it does not retain original Markdown source offsets. Direct cursor-to-source position mapping breaks as punctuation disappears or text transforms in headings, emphasis, links, lists, tables, fenced code, and entities; MDPeek's panel styling also inserts document frame markers around quotes and code. Unicode survives rendering, but its rendered offset is not enough to recover surrounding source syntax.
-
-For a future Copy-as-Markdown phase, the recommended approach is to record source ranges while parsing Markdown and associate them with rendered ranges before presentation styling. A source-to-render mapping therefore appears necessary for reliable partial Copy as Markdown. Phase 4 stores the exact current source and includes only the reliable internal special case: a complete rendered-document selection maps back to that exact source.
+MDPeek provides a single read-only, selectable document window using Qt's built-in Markdown renderer. External links open in the system browser and relative images resolve from the currently open Markdown file's folder. Editing, tabs, recent files, automatic file watching, file associations, themes, and installers are outside the current scope.
 
 ## License
 
