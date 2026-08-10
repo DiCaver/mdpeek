@@ -27,6 +27,7 @@ from .clipboard import html_source_mime_data, plain_mime_data
 from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_document_regions
 from .outline import DocumentOutline
 from .navigation import NavigationHistory, normalize_path
+from .printing import prepare_printable_document, show_print_preview as open_print_preview
 
 from .style import (
     PANEL_KIND_PROPERTY,
@@ -345,6 +346,13 @@ class MarkdownWindow(QMainWindow):
         self.open_action.triggered.connect(self.show_open_dialog)
         file_menu.addAction(self.open_action)
         file_menu.addSeparator()
+        self.print_action = QAction("&Print…", self)
+        self.print_action.setShortcut(QKeySequence.StandardKey.Print)
+        self.print_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.print_action.setEnabled(False)
+        self.print_action.triggered.connect(self.show_print_preview)
+        file_menu.addAction(self.print_action)
+        file_menu.addSeparator()
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
@@ -496,6 +504,7 @@ class MarkdownWindow(QMainWindow):
         self.outline.set_regions(DocumentRegions(), empty_document=True)
         self.source_markdown = ""
         self.current_path = None
+        self.print_action.setEnabled(False)
         self._update_selection_actions()
 
     def _display_document(self, path: Path, markdown: str) -> None:
@@ -511,9 +520,23 @@ class MarkdownWindow(QMainWindow):
         self.viewer.verticalScrollBar().setValue(0)
         self.viewer.horizontalScrollBar().setValue(0)
         self.current_path = resolved
+        self.print_action.setEnabled(True)
         self.source_markdown = markdown
         self.setWindowTitle(f"{resolved.name} — MDPeek")
         self._update_selection_actions()
+
+    def show_print_preview(self) -> None:
+        """Preview the complete currently displayed document without mutating it."""
+        if self.current_path is None:
+            return
+        title = f"Print Preview — {self.current_path.name}"
+        open_print_preview(
+            self,
+            title,
+            lambda printer: prepare_printable_document(
+                self.viewer.document(), self.source_markdown, printer
+            ),
+        )
 
     def _restore_vertical_position(self, position: int) -> None:
         """Restore now and once more after Qt completes deferred layout."""

@@ -34,6 +34,17 @@ Running either command without a filepath opens the empty screen. Close the wind
 
 While MDPeek is running, press `Ctrl+O` (or choose **File > Open…**) to select a file. You can also drag one `.md` or `.markdown` file anywhere onto the window. A newly opened file replaces the current document in the same window; MDPeek remains a read-only viewer.
 
+Press `Ctrl+P` (or choose **File > Print…**) to open Qt's full-document print preview. Printing uses a separate, paper-sized document with a white background, dark text, underlined links, restrained code and quote panels, and printer-derived margins; the responsive on-screen gutter is not printed. The preview includes the complete rendered document even when text is selected or the viewer is scrolled, and uses the operating system's native printer selection. The welcome screen cannot be printed.
+
+To create a PDF on Windows through the standard print workflow:
+
+1. Open Print with `Ctrl+P`.
+2. Choose the print command from the preview.
+3. Select **Microsoft Print to PDF**.
+4. Choose the destination filename in the Windows dialog.
+
+MDPeek does not implement a separate PDF exporter; Windows supplies the PDF printer and filename prompt.
+
 Use **File > Back** (`Alt+Left`) and **File > Forward** (`Alt+Right`) to revisit files opened during the current session. MDPeek remembers each visit's vertical reading position and reloads the file from disk when navigating, so external edits are visible. Like a browser, opening another file after going Back replaces the forward branch; refreshing the current file does not. If a historical file has been moved, deleted, or become unreadable, MDPeek reports the error while leaving the current document and complete history intact so navigation can be retried. History belongs to one window and is discarded when MDPeek closes.
 
 The resizable **Document Outline** sidebar displays rendered H1–H6 headings as a hierarchy. Click a heading to scroll to that exact occurrence; repeated titles remain separate, and the item for the section at the top of the reading area is highlighted as you scroll. Long titles are elided with their full text in a tooltip, empty headings use an untitled fallback, and a document with no headings shows a quiet message. Collapse branches with their disclosure controls. Use `Ctrl+H` or **View > Document Outline** to show or hide the sidebar; its visibility and width are retained while the application is running.
