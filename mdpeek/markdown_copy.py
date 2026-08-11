@@ -164,6 +164,7 @@ def markdown_mime_data(cursor: QTextCursor, source: str, regions: DocumentRegion
     if markdown is None:
         return None
     data = QMimeData()
-    data.setText(markdown)
     data.setData("text/markdown", QByteArray(markdown.encode("utf-8")))
+    # Keep text/plain as the final format for reliable Windows clipboard transfer.
+    data.setText(markdown)
     return data

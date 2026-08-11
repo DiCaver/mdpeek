@@ -1,0 +1,66 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Test and package
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -SkipInstaller
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/MDPeek/MDPeek.exe)) { throw 'MDPeek.exe is missing' }
+          if (-not (Test-Path dist/MDPeek/_internal/assets/mdpeek.ico)) { throw 'Runtime icon is missing' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MDPeek-Windows-smoke-build
+          path: |
+            dist/MDPeek/
+            dist/artifacts/*.zip
+            dist/artifacts/*SHA256SUMS.txt
+
+  release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Verify tag version
+        shell: pwsh
+        run: python scripts/release.py --validate-tag '${{ github.ref_name }}'
+      - name: Test and build release artifacts
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MDPeek-${{ github.ref_name }}-Windows-x64
+          path: dist/artifacts/*
+      - name: Create draft GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = Get-ChildItem dist/artifacts -File | Select-Object -ExpandProperty FullName
+          gh release create '${{ github.ref_name }}' $assets --draft --title "MDPeek ${{ github.ref_name }}" --notes-file docs/release-notes-v0.1.0.md

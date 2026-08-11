@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">MDPeek</title>
+  <desc id="desc">A blue document with a folded corner and a friendly eye-shaped viewing opening.</desc>
+  <path fill="#1769aa" d="M48 16h104l56 56v168H48z"/>
+  <path fill="#8fc9f2" d="M152 16v56h56z"/>
+  <path fill="#fff" d="M70 145c31-47 85-47 116 0-31 47-85 47-116 0z"/>
+  <circle cx="128" cy="145" r="25" fill="#1769aa"/>
+  <circle cx="137" cy="136" r="7" fill="#fff"/>
+</svg>

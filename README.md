@@ -1,97 +1,169 @@
 # MDPeek
 
-A tiny, read-only Markdown viewer built with Python and PySide6.
+<p align="center"><img src="assets/mdpeek-icon.svg" width="112" alt="MDPeek document-and-eye icon"></p>
 
-MDPeek opens and renders UTF-8 Markdown files from the command line, the native Open dialog, or drag-and-drop. There are intentionally no editing features.
+MDPeek is a small, fast, read-only Markdown viewer for Windows. Double-click a Markdown file, read the rendered preview, select useful content, copy it as plain text, clean HTML, or Markdown, and print through the native Windows print system.
 
-The viewer includes a clean reading layout, responsive document margins, offline Pygments highlighting, and selection copying while retaining Qt's small built-in Markdown renderer.
+It is deliberately focused, local-first, free, and open source: a viewer for people who do not want to open a full editor just to read a document.
 
-## Setup
+## Why MDPeek?
 
-MDPeek requires Python 3.10 or newer. From the repository root, create a virtual environment and install the application:
+MDPeek keeps viewing separate from editing. It never modifies the Markdown document and offers a quiet native interface with the navigation and copying tools needed for long technical files.
+
+## Features
+
+- Markdown rendering with syntax-highlighted fenced code
+- Document outline, heading navigation, and section selection
+- Back and Forward navigation with per-document reading positions
+- Copy selections as rendered text, clean HTML, or balanced Markdown
+- One-click copying of fenced code blocks
+- Local images and supported remote images
+- Open dialog, command-line paths, and drag-and-drop opening
+- Native print preview, printer selection, and Microsoft Print to PDF
+- Installed and portable Windows x64 editions
+- `.md` and `.markdown` Open With integration
+
+MDPeek remains a viewer: there is no editing, tab system, automatic file watcher, or background update service.
+
+## Download
+
+Release builds are available from [GitHub Releases](https://github.com/DiCaver/mdpeek/releases).
+
+| Download | Best for |
+| --- | --- |
+| Windows installer | Normal installation, Start menu shortcut, and optional file registration |
+| Portable ZIP | Extracting and running without installation or registry changes |
+
+The first Windows release targets Windows 10/11, 64-bit.
+
+## Installation
+
+1. Download `MDPeek-0.1.0-Windows-x64-Setup.exe` from GitHub Releases.
+2. Run the installer.
+3. Choose whether to add an optional desktop shortcut and Markdown file registration.
+4. Launch MDPeek from the Start menu or open a Markdown file.
+
+The first release is unsigned, so Microsoft Defender SmartScreen may ask you to review the download. Download only from this repository, check the publisher and filename, and verify its SHA-256 hash if desired. Use the warning dialog's normal per-file review path only when you trust and have verified the download; do not disable SmartScreen globally.
+
+## Set MDPeek as the default Markdown viewer
+
+The installer registers MDPeek as an available handler but respects an existing default. If Windows keeps another Markdown application:
+
+1. Right-click a `.md` or `.markdown` file in Explorer.
+2. Choose **Open with > Choose another app**.
+3. Select **MDPeek**.
+4. Enable **Always use this app** where Windows offers that option.
+
+You can also use **Settings > Apps > Default apps**. Windows 10/11 may require explicit confirmation and the installer does not bypass the protected default-app choice.
+
+## Portable version
+
+Extract `MDPeek-0.1.0-Windows-x64-Portable.zip` anywhere and run `MDPeek\MDPeek.exe`. The archive contains the complete one-folder application and does not require Python. Running it does not install files, create shortcuts, or register file associations.
+
+## Using MDPeek
+
+### Opening files
+
+Use **File > Open…**, drag one `.md` or `.markdown` file onto the window, double-click an associated file, or pass a path:
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -e .
+MDPeek.exe "C:\Documents\Project notes.markdown"
 ```
 
-## Run
+Paths with spaces and Unicode are supported. Opening another document replaces the current one in the same window. Back and Forward reload files from disk and restore their recorded vertical positions.
 
-Open a Markdown file:
+### Navigation and outline
 
-```powershell
-mdpeek README.md
-```
+The resizable **Document Outline** displays H1–H6 headings as a hierarchy. Select a heading to navigate to it. The current section follows the reading position. The section control beside a rendered heading selects that heading through the next peer or parent heading.
 
-Or run the package directly:
+### Copy formats
 
-```powershell
-python -m mdpeek README.md
-```
-
-Running either command without a filepath opens the empty screen. Close the window to exit.
-
-While MDPeek is running, press `Ctrl+O` (or choose **File > Open…**) to select a file. You can also drag one `.md` or `.markdown` file anywhere onto the window. A newly opened file replaces the current document in the same window; MDPeek remains a read-only viewer.
-
-Press `Ctrl+P` (or choose **File > Print…**) to open Qt's full-document print preview. Printing uses a separate, paper-sized document with a white background, dark text, underlined links, restrained code and quote panels, and printer-derived margins; the responsive on-screen gutter is not printed. The preview includes the complete rendered document even when text is selected or the viewer is scrolled, and uses the operating system's native printer selection. The welcome screen cannot be printed.
-
-To create a PDF on Windows through the standard print workflow:
-
-1. Open Print with `Ctrl+P`.
-2. Choose the print command from the preview.
-3. Select **Microsoft Print to PDF**.
-4. Choose the destination filename in the Windows dialog.
-
-MDPeek does not implement a separate PDF exporter; Windows supplies the PDF printer and filename prompt.
-
-Use **File > Back** (`Alt+Left`) and **File > Forward** (`Alt+Right`) to revisit files opened during the current session. MDPeek remembers each visit's vertical reading position and reloads the file from disk when navigating, so external edits are visible. Like a browser, opening another file after going Back replaces the forward branch; refreshing the current file does not. If a historical file has been moved, deleted, or become unreadable, MDPeek reports the error while leaving the current document and complete history intact so navigation can be retried. History belongs to one window and is discarded when MDPeek closes.
-
-The resizable **Document Outline** sidebar displays rendered H1–H6 headings as a hierarchy. Click a heading to scroll to that exact occurrence; repeated titles remain separate, and the item for the section at the top of the reading area is highlighted as you scroll. Long titles are elided with their full text in a tooltip, empty headings use an untitled fallback, and a document with no headings shows a quiet message. Collapse branches with their disclosure controls. Use `Ctrl+H` or **View > Document Outline** to show or hide the sidebar; its visibility and width are retained while the application is running.
-
-Selection commands are available from both the **Edit** menu and the document context menu:
-
-- `Ctrl+A` selects the rendered document.
-- `Ctrl+C` copies the selected visible text as plain text.
-- `Ctrl+Shift+C` copies the selection as clean semantic HTML source.
-- `Ctrl+Shift+M` copies the selection as balanced Markdown.
-
-| Command | Clipboard result |
+| Command | Result |
 | --- | --- |
 | Copy | Rendered plain text |
-| Copy as HTML | Clean HTML plus plain-text fallback |
-| Copy as Markdown | Selection represented as Markdown |
+| Copy as HTML | Clean HTML with a plain-text fallback |
+| Copy as Markdown | Selected content represented as Markdown |
 
-**Copy as Markdown** preserves headings, emphasis, links, lists, quotes, code, tables, and other available Markdown structure. Partial formatted selections receive balanced delimiters, while `Ctrl+A` uses the exact loaded source—including source-only definitions, comments, and original whitespace—where possible. The command is available in the Edit menu and, with the other two formats, in the document context menu.
+**Copy as Markdown** (`Ctrl+Shift+M`) preserves meaningful headings, emphasis, links, lists, quotes, tables, and code. Partial selections receive balanced formatting where supported; selecting the complete document preserves the original source where possible. The code-block control copies source code without fences or highlighting markup.
 
-Move the pointer over a rendered heading to reveal its **Select section** control. It selects the heading and everything below it, including nested subsections, stopping immediately before the next heading of the same or a higher level (or at the end of the document). Selecting does not copy or change the document; use the existing plain-text or HTML command afterward. **Edit > Select Current Section** provides the same operation for the section containing the text cursor or the start of the current selection.
+### Printing
 
-Move the pointer over a fenced code block to reveal **Copy code**. It copies immediately as plain text, using the original source code rather than highlighted document text: fences, the language label, highlighting markup, and viewer-added spacing are excluded. **Edit > Copy Current Code Block** is available when the text cursor or selection begins inside a fenced block.
+Choose **File > Print…** or press `Ctrl+P`. MDPeek prints the complete document with a print-friendly light layout through Qt's native printer selection; a text selection does not limit printing and the welcome screen is not printable.
 
-**Copy as HTML** puts literal HTML markup in the clipboard's primary `text/plain` value for VS Code, HTML editors, and CMS source fields. The identical clean fragment is also exposed as `text/html` for rich-text applications. It contains semantic document elements but no MDPeek CSS, syntax-highlighting spans, or Qt document wrapper.
+To create a PDF on Windows:
 
-To explore the supported Markdown and presentation styles, open the included showcase:
+1. Open Print with `Ctrl+P`.
+2. Choose the print command in the preview.
+3. Select **Microsoft Print to PDF**.
+4. Choose a destination filename.
+
+The resulting PDF uses the native Windows PDF printer; MDPeek has no separate PDF exporter.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+O` | Open a Markdown file |
+| `Alt+Left` | Back |
+| `Alt+Right` | Forward |
+| `Ctrl+C` | Copy rendered plain text |
+| `Ctrl+Shift+C` | Copy as HTML |
+| `Ctrl+Shift+M` | Copy as Markdown |
+| `Ctrl+A` | Select all |
+| `Ctrl+H` | Show or hide the document outline |
+| `Ctrl+P` | Print preview |
+| `Ctrl+Q` | Exit |
+
+## Security and privacy
+
+MDPeek does not edit Markdown files and includes no analytics or telemetry. Local documents are rendered locally with Qt; there is no browser engine, JavaScript, remote theme, or CDN. Raw HTML support is limited by Qt's Markdown renderer.
+
+Remote images referenced by a document may be fetched over the network. Opening an untrusted document can therefore reveal your IP address to its remote image hosts. External links open in the system browser only when selected.
+
+## Known limitations
+
+- The first release is unsigned and may trigger a SmartScreen warning.
+- Windows may require explicit confirmation to change an existing file association.
+- Only Windows x64 packages are initially distributed.
+- Complex table layout, image selection, and print pagination follow Qt's document-layout capabilities.
+
+## Development
+
+MDPeek requires Python 3.10 or newer; release automation uses Python 3.12 on Windows.
 
 ```powershell
-python -m mdpeek examples/showcase.md
+git clone https://github.com/DiCaver/mdpeek.git
+cd mdpeek
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e ".[test]"
+python -m mdpeek examples\showcase.md
+python -m pytest tests
 ```
 
-## Markdown support
-
-Qt correctly renders headings, emphasis, strikethrough, links, ordered and unordered lists, blockquotes, inline and fenced code, tables, horizontal rules, Unicode text, and relative local images used by the showcase.
-
-Its built-in renderer intentionally supports a practical CommonMark/GitHub-style subset rather than every Markdown extension. Task lists render as non-interactive checked and unchecked boxes. MDPeek adds syntax highlighting for recognized fenced-code language labels; unknown and unlabeled fences remain ordinary monospace code. Table alignment hints may not affect presentation, and raw HTML/CSS support is limited. MDPeek does not use a browser engine, JavaScript, remote themes, or CDNs.
-
-## Test
+On non-Windows systems, tests set Qt's offscreen platform automatically. Windows packaging uses PyInstaller one-folder mode and Inno Setup 6:
 
 ```powershell
-python -m unittest discover -s tests
+.\scripts\build-windows.ps1
 ```
 
-## Scope
+The script creates an isolated `.release-venv`, runs all tests before packaging, builds the application and portable ZIP, compiles the installer when Inno Setup is available, and calculates final checksums. See [Building for Windows](docs/building-windows.md) and the [release guide](docs/releasing.md).
 
-MDPeek provides a single read-only, selectable document window using Qt's built-in Markdown renderer. External links open in the system browser and relative images resolve from the currently open Markdown file's folder. Editing, tabs, recent files, automatic file watching, file associations, themes, and installers are outside the current scope.
+## Release verification
+
+Compare the published checksum with PowerShell:
+
+```powershell
+Get-FileHash .\MDPeek-0.1.0-Windows-x64-Setup.exe -Algorithm SHA256
+Get-FileHash .\MDPeek-0.1.0-Windows-x64-Portable.zip -Algorithm SHA256
+```
+
+The values must match `MDPeek-0.1.0-SHA256SUMS.txt` from the same release.
+
+## Roadmap
+
+Near-term work is limited to code signing, feedback from the first packaged release, and carefully selected usability improvements. MDPeek will remain a Markdown viewer rather than an editor.
 
 ## License
 
-MDPeek is released under the [MIT License](LICENSE).
+MDPeek is free and open source under the [MIT License](LICENSE).

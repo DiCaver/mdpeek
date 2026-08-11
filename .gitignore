@@ -2,3 +2,9 @@
 .tmp/
 __pycache__/
 *.egg-info/
+build/
+dist/
+installer/output/
+.pytest_cache/
+pytest-cache-files-*/
+.release-venv/

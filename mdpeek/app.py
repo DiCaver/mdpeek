@@ -10,6 +10,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QImage,
+    QIcon,
     QKeySequence,
     QPainter,
     QPalette,
@@ -29,6 +30,8 @@ from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_
 from .outline import DocumentOutline
 from .navigation import NavigationHistory, normalize_path
 from .printing import prepare_printable_document, show_print_preview as open_print_preview
+from .resources import application_icon_path
+from .version import __version__
 
 from .style import (
     PANEL_KIND_PROPERTY,
@@ -262,15 +265,19 @@ def read_markdown(path: Path) -> str:
 class MarkdownWindow(QMainWindow):
     def __init__(self, path: Path | None = None, markdown: str | None = None) -> None:
         super().__init__()
+        icon_path = application_icon_path()
+        if icon_path is not None:
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(900, 700)
         self.current_path: Path | None = None
         self.source_markdown = ""
         self.last_open_error: OSError | UnicodeError | None = None
         self.history = NavigationHistory()
         self._scroll_restore_generation = 0
-        # Retain the current transferred wrapper; this avoids a PySide Windows
-        # clipboard ownership edge case when a local QMimeData is collected.
-        self._clipboard_data: QMimeData | None = None
+        # Retain transferred wrappers for the window lifetime. On Windows,
+        # collecting a previous PySide QMimeData can clear a newer clipboard
+        # payload asynchronously.
+        self._clipboard_data: list[QMimeData] = []
         self.setAcceptDrops(True)
 
         self.viewer = MarkdownViewer()
@@ -463,29 +470,32 @@ class MarkdownWindow(QMainWindow):
     def copy_code_region(self, region: CodeRegion) -> None:
         data = QMimeData()
         data.setText(region.code)
-        QApplication.clipboard().setMimeData(data)
-        self._clipboard_data = data
+        self._set_clipboard_data(data)
         self.viewer.show_copied_feedback()
+
+    def _set_clipboard_data(self, data: QMimeData) -> None:
+        """Replace clipboard data reliably across PySide Windows versions."""
+        clipboard = QApplication.clipboard()
+        clipboard.clear()
+        self._clipboard_data.append(data)
+        clipboard.setMimeData(data)
 
     def copy_as_plain_text(self) -> None:
         data = plain_mime_data(self.viewer.textCursor())
         if data is not None:
-            QApplication.clipboard().setMimeData(data)
-            self._clipboard_data = data
+            self._set_clipboard_data(data)
 
     def copy_as_html(self) -> None:
         data = html_source_mime_data(self.viewer.textCursor())
         if data is not None:
-            QApplication.clipboard().setMimeData(data)
-            self._clipboard_data = data
+            self._set_clipboard_data(data)
 
     def copy_as_markdown(self) -> None:
         data = markdown_mime_data(
             self.viewer.textCursor(), self.source_markdown, self.viewer.regions
         )
         if data is not None:
-            QApplication.clipboard().setMimeData(data)
-            self._clipboard_data = data
+            self._set_clipboard_data(data)
 
     def _context_menu(self, position: QPoint) -> QMenu:
         menu = QMenu(self.viewer)
@@ -672,15 +682,44 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def startup_path_error(path: Path) -> str | None:
+    """Describe an invalid Explorer/command-line target without opening it."""
+    if path.is_dir():
+        return "The selected path is a directory, not a Markdown file."
+    if path.suffix.lower() not in {".md", ".markdown"}:
+        return "MDPeek opens .md and .markdown files."
+    if not path.is_file():
+        return "The selected Markdown file does not exist or is not a regular file."
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args, unexpected = build_parser().parse_known_args(argv)
     app = QApplication(sys.argv[:1])
+    app.setApplicationName("MDPeek")
+    app.setApplicationDisplayName("MDPeek")
+    app.setApplicationVersion(__version__)
+    app.setOrganizationName("MDPeek contributors")
+    icon_path = application_icon_path()
+    if icon_path is not None:
+        app.setWindowIcon(QIcon(str(icon_path)))
     window = MarkdownWindow()
-    if args.file is not None and not window.open_file(args.file, show_error=False):
-        print(
-            f"mdpeek: could not open '{args.file}': {window.last_open_error}",
-            file=sys.stderr,
-        )
-        return 2
     window.show()
+    if unexpected:
+        QMessageBox.critical(
+            window,
+            "Could not open file",
+            "MDPeek accepts one Markdown filepath. Unexpected arguments:\n\n"
+            + " ".join(unexpected),
+        )
+    elif args.file is not None:
+        error = startup_path_error(args.file)
+        if error is None and not window.open_file(args.file, show_error=False):
+            error = str(window.last_open_error)
+        if error is not None:
+            QMessageBox.critical(
+                window,
+                "Could not open file",
+                f"MDPeek could not open:\n{args.file}\n\n{error}",
+            )
     return app.exec()

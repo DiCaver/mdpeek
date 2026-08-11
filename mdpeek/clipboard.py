@@ -182,8 +182,10 @@ def html_source_mime_data(cursor: QTextCursor) -> QMimeData | None:
         return None
     fragment = selected_clean_html(cursor)
     data = QMimeData()
-    data.setText(fragment)
     data.setHtml(fragment)
+    # Set the primary plain-text representation last. On Windows, some Qt
+    # versions otherwise expose an empty text value after ownership transfer.
+    data.setText(fragment)
     return data
 
 
