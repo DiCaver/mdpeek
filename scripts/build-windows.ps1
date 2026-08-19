@@ -61,11 +61,11 @@ try {
 
     $InstallerPath = $null
     if (-not $SkipInstaller) {
-        $isccCandidates = @(
+        $isccCandidates = @(@(
             (Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
-            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
             "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-        ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+        ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) })
         if (-not $isccCandidates) { throw 'Inno Setup 6 was not found. Install it or use -SkipInstaller.' }
         $Version = & "$BuildEnvironment\Scripts\python.exe" scripts\release.py --version
         $InstallerName = & "$BuildEnvironment\Scripts\python.exe" scripts\release.py --artifact installer

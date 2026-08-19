@@ -89,6 +89,7 @@ class ReleaseTests(unittest.TestCase):
     def test_packaging_files_have_release_safety_properties(self) -> None:
         spec = (ROOT / "packaging" / "mdpeek.spec").read_text(encoding="utf-8")
         installer = (ROOT / "installer" / "MDPeek.iss").read_text(encoding="utf-8")
+        build_script = (ROOT / "scripts" / "build-windows.ps1").read_text(encoding="utf-8")
         self.assertIn('console=False', spec)
         self.assertIn('name="MDPeek"', spec)
         self.assertIn('assets" / "mdpeek.ico', spec)
@@ -99,6 +100,10 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn("CompareText(Existing, '{#AppProgID}')", installer)
         self.assertIn("UserChoice", installer)
         self.assertIn("RegQueryStringValue(HKCR, Extension", installer)
+        # PowerShell otherwise collapses a one-item pipeline result to a
+        # string, making $isccCandidates[0] invoke only its first character.
+        self.assertIn("$isccCandidates = @(@(", build_script)
+        self.assertIn("${env:ProgramFiles(x86)}", build_script)
 
 
 if __name__ == "__main__":
