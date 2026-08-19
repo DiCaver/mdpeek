@@ -1,6 +1,8 @@
 # MDPeek
 
-<p align="center"><img src="assets/mdpeek-icon.svg" width="112" alt="MDPeek document-and-eye icon"></p>
+<!-- <p align="center"><img src="assets/mdpeek-icon.svg" width="112" alt="MDPeek document-and-eye icon"></p> -->
+
+![Screenshot](./assets/mdpeek-icon_small.png)
 
 MDPeek is a small, fast, read-only Markdown viewer for Windows. Double-click a Markdown file, read the rendered preview, select useful content, copy it as plain text, clean HTML, or Markdown, and print through the native Windows print system.
 
@@ -19,11 +21,13 @@ MDPeek keeps viewing separate from editing. It never modifies the Markdown docum
 - One-click copying of fenced code blocks
 - Local images and supported remote images
 - Open dialog, command-line paths, and drag-and-drop opening
+- Single-window file opening and automatic refresh after external saves
+- Built-in Help available from the Help menu or `F1`
 - Native print preview, printer selection, and Microsoft Print to PDF
 - Installed and portable Windows x64 editions
 - `.md` and `.markdown` Open With integration
 
-MDPeek remains a viewer: there is no editing, tab system, automatic file watcher, or background update service.
+MDPeek remains a viewer: there is no editing or tab system.
 
 ## Download
 
@@ -70,11 +74,13 @@ Use **File > Open…**, drag one `.md` or `.markdown` file onto the window, doub
 MDPeek.exe "C:\Documents\Project notes.markdown"
 ```
 
-Paths with spaces and Unicode are supported. Opening another document replaces the current one in the same window. Back and Forward reload files from disk and restore their recorded vertical positions.
+Paths with spaces and Unicode are supported. MDPeek normally keeps one application window: opening an associated file while it is running forwards that file to the existing window. Back and Forward reload files from disk and restore their recorded vertical positions.
+
+The current file refreshes automatically after another application saves it. MDPeek keeps the approximate reading position and does not add refreshes to navigation history. If a replacement cannot be read, the last successfully rendered content stays visible.
 
 ### Navigation and outline
 
-The resizable **Document Outline** displays H1–H6 headings as a hierarchy. Select a heading to navigate to it. The current section follows the reading position. The section control beside a rendered heading selects that heading through the next peer or parent heading.
+The resizable **Outline** is hidden by default and displays H1–H6 headings as a hierarchy when opened. Select a heading to navigate to it. The current section follows the reading position. The section control beside a rendered heading selects that heading through the next peer or parent heading.
 
 ### Copy formats
 
@@ -112,6 +118,7 @@ The resulting PDF uses the native Windows PDF printer; MDPeek has no separate PD
 | `Ctrl+A` | Select all |
 | `Ctrl+H` | Show or hide the document outline |
 | `Ctrl+P` | Print preview |
+| `F1` | Open Help |
 | `Ctrl+Q` | Exit |
 
 ## Security and privacy

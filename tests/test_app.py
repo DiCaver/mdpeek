@@ -68,9 +68,10 @@ class MDPeekTests(unittest.TestCase):
         self.assertTrue(viewer.isReadOnly())
         self.assertGreaterEqual(viewer.font().pointSize(), 11)
         self.assertIn("MDPeek", viewer.toPlainText())
-        self.assertIn("mdpeek README.md", viewer.toPlainText())
+        self.assertNotIn("mdpeek README.md", viewer.toPlainText())
+        self.assertIn("F1", viewer.toPlainText())
         self.assertIn("Ctrl+O", viewer.toPlainText())
-        self.assertIn("drag and drop", viewer.toPlainText())
+        self.assertIn("Drag and drop", viewer.toPlainText())
         self.assertIn("MDPeek", EMPTY_MESSAGE)
 
     def test_file_window_renders_markdown(self) -> None:

@@ -5,7 +5,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QMimeData, QPoint, QRectF, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QByteArray, QFileSystemWatcher, QMimeData, QPoint, QRect, QRectF, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -22,14 +22,17 @@ from PySide6.QtGui import (
     QTextFrameFormat,
 )
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMenu, QMessageBox, QTextBrowser, QToolButton
+from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDialog, QMainWindow, QMenu, QMessageBox, QTextBrowser, QToolButton, QVBoxLayout
 
 from .clipboard import html_source_mime_data, plain_mime_data
 from .markdown_copy import markdown_mime_data
 from .document_regions import CodeRegion, DocumentRegions, HeadingRegion, build_document_regions
 from .outline import DocumentOutline
 from .navigation import NavigationHistory, normalize_path
-from .printing import prepare_printable_document, show_print_preview as open_print_preview
+from .printing import prepare_printable_document, show_print_preview as open_print_preview, suggested_pdf_path
+from .content import safe_markdown
+from .icons import CHECK_SVG, COPY_SVG, SECTION_SVG, svg_icon
+from .instance import InstanceServer, forward_path
 from .resources import application_icon_path
 from .version import __version__
 
@@ -45,12 +48,38 @@ from .style import (
 
 EMPTY_MESSAGE = """# MDPeek
 
-Press Ctrl+O or drag and drop a Markdown file here.
+Open a Markdown file to start reading.
 
-You can also pass its path on the command line:
-
-    mdpeek README.md
+- **Ctrl+O** — Open a file
+- Drag and drop a Markdown file here
+- **F1** — Open Help
 """
+
+HELP_MARKDOWN = """# MDPeek Help
+
+Open a Markdown file with **Ctrl+O**, or drag and drop it onto MDPeek. Files changed by another application refresh automatically.
+
+## Reading and navigation
+
+- Select text with the mouse. **Ctrl+A** selects all content.
+- **Ctrl+C** copies plain text, **Ctrl+Shift+M** copies Markdown, and **Ctrl+Shift+C** copies HTML.
+- Use a heading's section action to select everything under that heading.
+- **Ctrl+F** finds text. **Alt+Left** and **Alt+Right** navigate file history.
+- **Ctrl+H** shows or hides the Outline.
+- Use the copy action in a code block to copy its exact contents.
+
+## Printing
+
+Press **Ctrl+P** to open Print Preview. Choose a physical printer or a PDF printer to save a PDF.
+"""
+
+
+def initial_window_geometry(work_area: QRect) -> QRect:
+    width = min(800, work_area.width())
+    height = min(1000, work_area.height())
+    return QRect(work_area.x() + (work_area.width() - width) // 2,
+                 work_area.y() + (work_area.height() - height) // 2,
+                 width, height)
 
 
 class MarkdownViewer(QTextBrowser):
@@ -71,22 +100,24 @@ class MarkdownViewer(QTextBrowser):
         self.viewport().setMouseTracking(True)
         self._hovered_heading: HeadingRegion | None = None
         self._hovered_code: CodeRegion | None = None
-        self._section_button = self._overlay_button("§", "Select section")
+        self.setCursorWidth(0)
+        self._section_button = self._overlay_button(SECTION_SVG, "Select this section")
         self._section_button.clicked.connect(self._request_hovered_section)
-        self._code_button = self._overlay_button("⧉", "Copy code")
+        self._code_button = self._overlay_button(COPY_SVG, "Copy code")
         self._code_button.clicked.connect(self._request_hovered_code)
         self.verticalScrollBar().valueChanged.connect(self._visible_position_changed)
         self.horizontalScrollBar().valueChanged.connect(self._position_overlays)
 
-    def _overlay_button(self, text: str, tooltip: str) -> QToolButton:
+    def _overlay_button(self, icon_data: bytes, tooltip: str) -> QToolButton:
         button = QToolButton(self.viewport())
-        button.setText(text)
+        button.setIcon(svg_icon(icon_data))
         button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
         button.setAutoRaise(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setFixedSize(24, 24)
         button.setStyleSheet(
-            "QToolButton { color: palette(mid); background: palette(base); "
+            "QToolButton { background: palette(base); "
             "border: 1px solid palette(midlight); border-radius: 4px; }"
             "QToolButton:hover { color: palette(text); border-color: palette(mid); }"
         )
@@ -165,12 +196,12 @@ class MarkdownViewer(QTextBrowser):
             self._code_button.hide()
 
     def show_copied_feedback(self) -> None:
-        self._code_button.setText("✓")
+        self._code_button.setIcon(svg_icon(CHECK_SVG))
         self._code_button.setToolTip("Copied")
         QTimer.singleShot(1200, self._reset_code_feedback)
 
     def _reset_code_feedback(self) -> None:
-        self._code_button.setText("⧉")
+        self._code_button.setIcon(svg_icon(COPY_SVG))
         self._code_button.setToolTip("Copy code")
 
     def clear_remote_images(self) -> None:
@@ -268,12 +299,22 @@ class MarkdownWindow(QMainWindow):
         icon_path = application_icon_path()
         if icon_path is not None:
             self.setWindowIcon(QIcon(str(icon_path)))
-        self.resize(900, 700)
+        self.setMinimumSize(480, 560)
+        screen = QApplication.primaryScreen()
+        self.setGeometry(initial_window_geometry(screen.availableGeometry()) if screen else QRect(0, 0, 800, 1000))
         self.current_path: Path | None = None
         self.source_markdown = ""
         self.last_open_error: OSError | UnicodeError | None = None
         self.history = NavigationHistory()
         self._scroll_restore_generation = 0
+        self._watcher = QFileSystemWatcher(self)
+        self._watcher.fileChanged.connect(self._file_changed)
+        self._watcher.directoryChanged.connect(self._file_changed)
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(180)
+        self._refresh_timer.timeout.connect(self._reload_watched_file)
+        self._refresh_attempts = 0
         # Retain transferred wrappers for the window lifetime. On Windows,
         # collecting a previous PySide QMimeData can clear a newer clipboard
         # payload asynchronously.
@@ -304,6 +345,7 @@ class MarkdownWindow(QMainWindow):
         self._create_file_menu()
         self._create_edit_menu()
         self._create_view_menu()
+        self._create_help_menu()
         viewer.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         viewer.customContextMenuRequested.connect(self._show_context_menu)
         viewer.selectionChanged.connect(self._update_selection_actions)
@@ -328,13 +370,38 @@ class MarkdownWindow(QMainWindow):
         self.resizeDocks([self.outline], [240], Qt.Orientation.Horizontal)
         menu = self.menuBar().addMenu("&View")
         self.outline_action = self.outline.toggleViewAction()
-        self.outline_action.setText("Document &Outline")
+        self.outline_action.setText("&Outline")
         self.outline_action.setShortcut(QKeySequence("Ctrl+H"))
         menu.addAction(self.outline_action)
         self.outline.headingActivated.connect(self._navigate_to_heading)
         self.outline.visibilityChanged.connect(
             lambda visible: QTimer.singleShot(0, self._update_active_outline_item) if visible else None
         )
+        self.outline.hide()
+
+    def _create_help_menu(self) -> None:
+        menu = self.menuBar().addMenu("&Help")
+        self.help_action = QAction("&?  MDPeek Help", self)
+        self.help_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
+        self.help_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.help_action.triggered.connect(self.show_help)
+        menu.addAction(self.help_action)
+
+    def show_help(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("MDPeek Help")
+        dialog.setModal(True)
+        dialog.resize(620, 560)
+        layout = QVBoxLayout(dialog)
+        content = QTextBrowser(dialog)
+        content.setReadOnly(True)
+        content.setCursorWidth(0)
+        content.setMarkdown(HELP_MARKDOWN)
+        layout.addWidget(content)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def _create_file_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -527,12 +594,13 @@ class MarkdownWindow(QMainWindow):
 
     def _display_document(self, path: Path, markdown: str) -> None:
         resolved = normalize_path(path)
+        rendered_markdown = safe_markdown(markdown)
         self._scroll_restore_generation += 1
         self.viewer.clear_remote_images()
         self.viewer.document().setBaseUrl(QUrl.fromLocalFile(str(resolved.parent) + "/"))
-        self.viewer.setMarkdown(markdown)
-        apply_document_style(self.viewer.document(), self.viewer.palette(), markdown)
-        regions = build_document_regions(self.viewer.document(), markdown)
+        self.viewer.setMarkdown(rendered_markdown)
+        apply_document_style(self.viewer.document(), self.viewer.palette(), rendered_markdown)
+        regions = build_document_regions(self.viewer.document(), rendered_markdown)
         self.viewer.set_document_regions(regions)
         self.outline.set_regions(regions)
         self.viewer.verticalScrollBar().setValue(0)
@@ -542,6 +610,7 @@ class MarkdownWindow(QMainWindow):
         self.source_markdown = markdown
         self.setWindowTitle(f"{resolved.name} — MDPeek")
         self._update_selection_actions()
+        self._watch_file(resolved)
 
     def show_print_preview(self) -> None:
         """Preview the complete currently displayed document without mutating it."""
@@ -552,9 +621,43 @@ class MarkdownWindow(QMainWindow):
             self,
             title,
             lambda printer: prepare_printable_document(
-                self.viewer.document(), self.source_markdown, printer
+                self.viewer.document(), safe_markdown(self.source_markdown), printer
             ),
+            suggested_pdf_path(self.current_path),
         )
+
+    def _watch_file(self, path: Path) -> None:
+        watched = self._watcher.files() + self._watcher.directories()
+        if watched:
+            self._watcher.removePaths(watched)
+        self._watcher.addPath(str(path.parent))
+        if path.is_file():
+            self._watcher.addPath(str(path))
+
+    def _file_changed(self, _path: str) -> None:
+        self._refresh_attempts = 0
+        self._refresh_timer.start()
+
+    def _reload_watched_file(self) -> None:
+        path = self.current_path
+        if path is None:
+            return
+        try:
+            markdown = read_markdown(path)
+        except (OSError, UnicodeError):
+            self._refresh_attempts += 1
+            if self._refresh_attempts < 5:
+                self._refresh_timer.start(200)
+            else:
+                self.statusBar().showMessage(
+                    "The current file is unavailable; showing the last loaded version.", 8000
+                )
+                self._watch_file(path)
+            return
+        position = self.viewer.verticalScrollBar().value()
+        self._display_document(path, markdown)
+        self._restore_vertical_position(position)
+        self.statusBar().showMessage("Updated from disk", 2000)
 
     def _restore_vertical_position(self, position: int) -> None:
         """Restore now and once more after Qt completes deferred layout."""
@@ -703,7 +806,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     icon_path = application_icon_path()
     if icon_path is not None:
         app.setWindowIcon(QIcon(str(icon_path)))
+    if forward_path(args.file):
+        return 0
     window = MarkdownWindow()
+
+    def receive(path: Path | None) -> None:
+        if path is not None:
+            error = startup_path_error(path)
+            if error is None:
+                window.open_file(path)
+            else:
+                QMessageBox.critical(
+                    window, "Could not open file",
+                    f"MDPeek could not open:\n{path}\n\n{error}",
+                )
+        if window.isMinimized():
+            window.showNormal()
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+    server = InstanceServer(receive, app)
+    server.start()
     window.show()
     if unexpected:
         QMessageBox.critical(

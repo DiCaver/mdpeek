@@ -30,7 +30,7 @@ class DocumentOutline(QDockWidget):
     headingActivated = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("Document Outline", parent)
+        super().__init__("Outline", parent)
         self.setObjectName("documentOutline")
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea)
         self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetClosable)

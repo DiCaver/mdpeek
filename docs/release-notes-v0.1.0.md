@@ -10,6 +10,10 @@ The first Windows release of MDPeek—a small, fast, read-only Markdown viewer.
 - Syntax-highlighted code with code-block copying
 - Back and Forward document navigation
 - Native print preview and Microsoft Print to PDF support
+- Single-window opening with Back and Forward history
+- Automatic refresh after external file changes
+- Safe handling of common raw HTML and relative images
+- Built-in F1 Help and a cleaner reading-first layout
 - Windows installer with respectful Markdown file registration
 - Portable Windows ZIP
 

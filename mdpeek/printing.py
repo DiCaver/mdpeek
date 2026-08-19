@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from PySide6.QtCore import QMarginsF, QSizeF, QUrl
 from PySide6.QtGui import (
@@ -34,6 +35,14 @@ def create_printer() -> QPrinter:
     layout.setMargins(QMarginsF(*(PRINT_MARGIN_MM,) * 4))
     printer.setPageLayout(layout)
     return printer
+
+
+def suggested_pdf_path(path: Path | None) -> Path:
+    if path is None:
+        return Path("MDPeek.pdf")
+    name = path.stem or "MDPeek"
+    safe = "".join("_" if char in '<>:"/\\|?*' else char for char in name).strip(" .")
+    return path.parent / f"{safe or 'MDPeek'}.pdf"
 
 
 def _copy_available_images(source: QTextDocument, target: QTextDocument) -> None:
@@ -175,9 +184,12 @@ def show_print_preview(
     parent: QWidget,
     title: str,
     document_factory: Callable[[QPrinter], QTextDocument],
+    suggested_output: Path | None = None,
 ) -> int:
     """Run Qt's native preview, preparing against its current printer layout."""
     printer = create_printer()
+    if suggested_output is not None:
+        printer.setOutputFileName(str(suggested_output))
     preview = QPrintPreviewDialog(printer, parent)
     preview.setWindowTitle(title)
 
