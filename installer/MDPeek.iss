@@ -34,6 +34,7 @@ UninstallDisplayIcon={app}\MDPeek.exe
 OutputDir=output
 OutputBaseFilename={#OutputBaseFilename}
 CloseApplications=yes
+ChangesAssociations=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
@@ -96,7 +97,6 @@ begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('fileassoc') then begin
     AssociateIfUnowned('.md');
     AssociateIfUnowned('.markdown');
-    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, 0, 0);
   end;
 end;
 
@@ -105,6 +105,5 @@ begin
   if CurUninstallStep = usUninstall then begin
     RemoveAssociationIfStillOurs('.md');
     RemoveAssociationIfStillOurs('.markdown');
-    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, 0, 0);
   end;
 end;

@@ -94,6 +94,8 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('name="MDPeek"', spec)
         self.assertIn('assets" / "mdpeek.ico', spec)
         self.assertIn("PrivilegesRequired=lowest", installer)
+        self.assertIn("ChangesAssociations=yes", installer)
+        self.assertNotIn("SHChangeNotify", installer)
         self.assertIn('""%1""', installer)
         self.assertIn(".md\\OpenWithProgids", installer)
         self.assertIn(".markdown\\OpenWithProgids", installer)
